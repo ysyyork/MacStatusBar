@@ -29,6 +29,7 @@ final class CPUMonitor: ObservableObject {
     @Published var gpuUsage: Double = 0
     @Published var gpuMemoryUsage: Double = 0
     @Published var gpuMemoryBytes: UInt64 = 0
+    @Published var gpuMemoryTotal: UInt64 = 0
     @Published var gpuName: String = "GPU"
     @Published var processorName: String = "—"
     @Published var fps: Double = 0
@@ -157,6 +158,7 @@ final class CPUMonitor: ObservableObject {
             self.gpuUsage = gpuStats.usage
             self.gpuMemoryUsage = gpuStats.memoryPercent
             self.gpuMemoryBytes = gpuStats.memoryBytes
+            self.gpuMemoryTotal = gpuStats.memoryTotal
             self.gpuName = gpuStats.name
             self.memoryUsed = memInfo.used
             self.memoryTotal = memInfo.total
@@ -274,13 +276,13 @@ final class CPUMonitor: ObservableObject {
 
     // MARK: - GPU Usage
 
-    private func getGPUUsage() -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, name: String) {
+    private func getGPUUsage() -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, memoryTotal: UInt64, name: String) {
         // For Apple Silicon, GPU is integrated and stats require elevated permissions
         // We'll use a simplified approach based on process GPU usage
         return getGPUUsageViaIOKit()
     }
 
-    private func getGPUUsageViaIOKit() -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, name: String) {
+    private func getGPUUsageViaIOKit() -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, memoryTotal: UInt64, name: String) {
         // Try to get GPU stats from ioreg
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
@@ -386,13 +388,13 @@ final class CPUMonitor: ObservableObject {
                     memPercent = Double(gpuMemoryUsed) / Double(gpuMemoryTotal) * 100
                 }
 
-                return (gpuUsage, memPercent, gpuMemoryUsed, gpuName)
+                return (gpuUsage, memPercent, gpuMemoryUsed, gpuMemoryTotal, gpuName)
             }
         } catch {
             // Silently fail
         }
 
-        return (0, 0, 0, "GPU")
+        return (0, 0, 0, 0, "GPU")
     }
 
     // MARK: - Process Stats
