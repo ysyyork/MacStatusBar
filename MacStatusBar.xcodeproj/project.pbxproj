@@ -92,17 +92,7 @@
 		B2000005234567890002 /* MacStatusBar */ = {
 			isa = PBXGroup;
 			children = (
-				B2000002234567890001 /* MacStatusBarApp.swift */,
-				B2000002234567890002 /* NetworkContentView.swift */,
-				B2000002234567890003 /* NetworkMonitor.swift */,
-				B2000002234567890006 /* CPUMonitor.swift */,
-				B2000002234567890007 /* CPUContentView.swift */,
-				B2000002234567890009 /* DiskMonitor.swift */,
-				B200000223456789000A /* DiskContentView.swift */,
-				B2000002234567890008 /* SharedViews.swift */,
-				B2000002234567890004 /* Formatters.swift */,
-				B200000223456789000B /* AppSettings.swift */,
-				B200000223456789000C /* SettingsView.swift */,
+				B20000052345678900A0 /* Sources */,
 				B200000223456789000D /* Assets.xcassets */,
 				B2000002234567890005 /* Info.plist */,
 			);
@@ -124,6 +114,64 @@
 				B2000002234567890100 /* MacStatusBarTests.swift */,
 			);
 			path = MacStatusBarTests;
+			sourceTree = "<group>";
+		};
+		B20000052345678900A0 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B20000052345678900A1 /* App */,
+				B20000052345678900A2 /* Models */,
+				B20000052345678900A3 /* ViewModels */,
+				B20000052345678900A4 /* Views */,
+				B20000052345678900A5 /* Utilities */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		B20000052345678900A1 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				B2000002234567890001 /* MacStatusBarApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B20000052345678900A2 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B200000223456789000B /* AppSettings.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		B20000052345678900A3 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				B2000002234567890006 /* CPUMonitor.swift */,
+				B2000002234567890009 /* DiskMonitor.swift */,
+				B2000002234567890003 /* NetworkMonitor.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		B20000052345678900A4 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				B2000002234567890007 /* CPUContentView.swift */,
+				B200000223456789000A /* DiskContentView.swift */,
+				B2000002234567890002 /* NetworkContentView.swift */,
+				B200000223456789000C /* SettingsView.swift */,
+				B2000002234567890008 /* SharedViews.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		B20000052345678900A5 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				B2000002234567890004 /* Formatters.swift */,
+			);
+			path = Utilities;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

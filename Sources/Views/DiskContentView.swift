@@ -124,8 +124,8 @@ struct DiskItemView: View {
                     .foregroundColor(.primary)
             }
 
-            // Free space
-            Text("\(formatBytes(disk.freeSpace)) free")
+            // Free space / Total space
+            Text("\(formatBytes(disk.freeSpace)) free of \(formatBytes(disk.totalSpace))")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
