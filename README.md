@@ -17,6 +17,7 @@ An open-source system monitoring status bar app for macOS users.
 ### CPU Monitor
 - CPU usage breakdown (User/System/Idle)
 - CPU temperature indicator
+- GPU usage and memory (Apple Silicon & discrete GPUs)
 - Memory and swap usage
 - Load average with history graph
 - Top processes by CPU usage

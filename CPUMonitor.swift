@@ -301,6 +301,20 @@ final class CPUMonitor: ObservableObject {
                         gpuName = String(output[startIndex..<endIndex])
                     }
                 }
+                // Fallback: try IOClass for discrete GPUs (e.g., AMD, NVIDIA)
+                if gpuName == "GPU", let range = output.range(of: "\"IOClass\" = \"") {
+                    let startIndex = range.upperBound
+                    if let endIndex = output[startIndex...].firstIndex(of: "\"") {
+                        let ioClass = String(output[startIndex..<endIndex])
+                        if ioClass.contains("AMD") {
+                            gpuName = "AMD GPU"
+                        } else if ioClass.contains("NVIDIA") || ioClass.contains("GeForce") {
+                            gpuName = "NVIDIA GPU"
+                        } else if ioClass.contains("Intel") {
+                            gpuName = "Intel GPU"
+                        }
+                    }
+                }
 
                 // Parse Device Utilization % from PerformanceStatistics
                 if let range = output.range(of: "\"Device Utilization %\"=") {
