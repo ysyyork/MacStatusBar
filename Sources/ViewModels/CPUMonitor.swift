@@ -382,7 +382,12 @@ final class CPUMonitor: ObservableObject {
                     }
                 }
 
-                // Calculate memory percentage (for Apple Silicon, use portion of total RAM)
+                // For Apple Silicon (no dedicated VRAM), use system RAM as reference
+                if gpuMemoryTotal == 0 && gpuMemoryUsed > 0 {
+                    gpuMemoryTotal = ProcessInfo.processInfo.physicalMemory
+                }
+
+                // Calculate memory percentage
                 var memPercent: Double = 0
                 if gpuMemoryTotal > 0 {
                     memPercent = Double(gpuMemoryUsed) / Double(gpuMemoryTotal) * 100

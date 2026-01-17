@@ -127,7 +127,7 @@ struct SystemFormatter {
         return String(format: "%.2f", value)
     }
 
-    /// Format memory size in bytes to human readable
+    /// Format memory size in bytes to human readable (e.g., "28.9 GB")
     static func formatMemory(_ bytes: UInt64) -> String {
         let units = ["B", "KB", "MB", "GB", "TB"]
         var value = Double(bytes)
@@ -140,8 +140,69 @@ struct SystemFormatter {
 
         if unitIndex == 0 {
             return String(format: "%.0f %@", value, units[unitIndex])
+        } else if value >= 10 {
+            return String(format: "%.1f %@", value, units[unitIndex])
+        } else {
+            return String(format: "%.2f %@", value, units[unitIndex])
+        }
+    }
+
+    /// Format memory as "used/total" (e.g., "28.9/32 GB")
+    static func formatMemoryUsage(used: UInt64, total: UInt64) -> String {
+        let units = ["B", "KB", "MB", "GB", "TB"]
+
+        // Use total to determine the unit
+        var totalValue = Double(total)
+        var unitIndex = 0
+
+        while totalValue >= 1024 && unitIndex < units.count - 1 {
+            totalValue /= 1024
+            unitIndex += 1
+        }
+
+        // Convert used to the same unit
+        var usedValue = Double(used)
+        for _ in 0..<unitIndex {
+            usedValue /= 1024
+        }
+
+        let usedStr: String
+        let totalStr: String
+
+        if unitIndex == 0 {
+            usedStr = String(format: "%.0f", usedValue)
+            totalStr = String(format: "%.0f", totalValue)
+        } else if totalValue >= 10 {
+            usedStr = String(format: "%.1f", usedValue)
+            totalStr = String(format: "%.1f", totalValue)
+        } else {
+            usedStr = String(format: "%.2f", usedValue)
+            totalStr = String(format: "%.2f", totalValue)
+        }
+
+        return "\(usedStr)/\(totalStr) \(units[unitIndex])"
+    }
+
+    /// Format disk space (uses 1000 divisor per macOS convention)
+    static func formatDiskSpace(_ bytes: UInt64) -> String {
+        let units = ["B", "KB", "MB", "GB", "TB"]
+        var value = Double(bytes)
+        var unitIndex = 0
+
+        while value >= 1000 && unitIndex < units.count - 1 {
+            value /= 1000
+            unitIndex += 1
+        }
+
+        if unitIndex == 0 {
+            return String(format: "%.0f %@", value, units[unitIndex])
         } else {
             return String(format: "%.1f %@", value, units[unitIndex])
         }
+    }
+
+    /// Format disk space as "free of total" (e.g., "209.3 GB free of 500 GB")
+    static func formatDiskUsage(free: UInt64, total: UInt64) -> String {
+        return "\(formatDiskSpace(free)) free of \(formatDiskSpace(total))"
     }
 }

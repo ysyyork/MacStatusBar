@@ -123,7 +123,7 @@ struct CPUMenuContentView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 70, alignment: .leading)
                     ProgressBarView(value: memoryUsageRatio, color: .blue)
-                    Text("\(formatMemoryCompact(monitor.memoryUsed))/\(formatMemory(monitor.memoryTotal))")
+                    Text(SystemFormatter.formatMemoryUsage(used: monitor.memoryUsed, total: monitor.memoryTotal))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.secondary)
                         .frame(width: 85, alignment: .trailing)
@@ -149,13 +149,13 @@ struct CPUMenuContentView: View {
                             .frame(width: 70, alignment: .leading)
                         if monitor.gpuMemoryTotal > 0 {
                             ProgressBarView(value: Double(monitor.gpuMemoryBytes) / Double(monitor.gpuMemoryTotal), color: .blue)
-                            Text("\(formatMemoryCompact(monitor.gpuMemoryBytes))/\(formatMemory(monitor.gpuMemoryTotal))")
+                            Text(SystemFormatter.formatMemoryUsage(used: monitor.gpuMemoryBytes, total: monitor.gpuMemoryTotal))
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .frame(width: 85, alignment: .trailing)
                         } else {
                             Spacer()
-                            Text(formatMemory(monitor.gpuMemoryBytes))
+                            Text(SystemFormatter.formatMemory(monitor.gpuMemoryBytes))
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .frame(width: 85, alignment: .trailing)
@@ -170,7 +170,7 @@ struct CPUMenuContentView: View {
                             .foregroundColor(.secondary)
                             .frame(width: 70, alignment: .leading)
                         ProgressBarView(value: swapUsageRatio, color: swapUsageRatio > 0.8 ? .orange : .green)
-                        Text("\(formatMemoryCompact(monitor.swapUsed))/\(formatMemory(monitor.swapTotal))")
+                        Text(SystemFormatter.formatMemoryUsage(used: monitor.swapUsed, total: monitor.swapTotal))
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.secondary)
                             .frame(width: 85, alignment: .trailing)
@@ -289,43 +289,6 @@ struct CPUMenuContentView: View {
 
     // MARK: - Helper Functions
 
-    private func formatMemory(_ bytes: UInt64) -> String {
-        let units = ["B", "KB", "MB", "GB", "TB"]
-        var value = Double(bytes)
-        var unitIndex = 0
-
-        while value >= 1024 && unitIndex < units.count - 1 {
-            value /= 1024
-            unitIndex += 1
-        }
-
-        if unitIndex == 0 {
-            return String(format: "%.0f %@", value, units[unitIndex])
-        } else if value >= 10 {
-            return String(format: "%.1f %@", value, units[unitIndex])
-        } else {
-            return String(format: "%.2f %@", value, units[unitIndex])
-        }
-    }
-
-    // Returns just the numeric value without unit (e.g., "28.9" instead of "28.9 GB")
-    private func formatMemoryCompact(_ bytes: UInt64) -> String {
-        var value = Double(bytes)
-        var unitIndex = 0
-
-        while value >= 1024 && unitIndex < 4 {
-            value /= 1024
-            unitIndex += 1
-        }
-
-        if unitIndex == 0 {
-            return String(format: "%.0f", value)
-        } else if value >= 10 {
-            return String(format: "%.1f", value)
-        } else {
-            return String(format: "%.2f", value)
-        }
-    }
 }
 
 // MARK: - CPU Histogram View

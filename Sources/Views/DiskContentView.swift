@@ -125,7 +125,7 @@ struct DiskItemView: View {
             }
 
             // Free space / Total space
-            Text("\(formatBytes(disk.freeSpace)) free of \(formatBytes(disk.totalSpace))")
+            Text(SystemFormatter.formatDiskUsage(free: disk.freeSpace, total: disk.totalSpace))
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
@@ -155,23 +155,6 @@ struct DiskItemView: View {
                     }
                 }
             }
-        }
-    }
-
-    private func formatBytes(_ bytes: UInt64) -> String {
-        let units = ["B", "KB", "MB", "GB", "TB"]
-        var value = Double(bytes)
-        var unitIndex = 0
-
-        while value >= 1000 && unitIndex < units.count - 1 {
-            value /= 1000
-            unitIndex += 1
-        }
-
-        if unitIndex == 0 {
-            return String(format: "%.0f %@", value, units[unitIndex])
-        } else {
-            return String(format: "%.1f %@", value, units[unitIndex])
         }
     }
 }
