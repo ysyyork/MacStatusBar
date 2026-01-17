@@ -48,25 +48,24 @@ jobs:
 
       - name: Create DMG
         run: |
+          # Build create-dmg command (without --volicon since app has no custom icon)
           create-dmg \
             --volname "MacStatusBar" \
-            --volicon "dist/MacStatusBar.app/Contents/Resources/AppIcon.icns" \
             --window-pos 200 120 \
-            --window-size 600 400 \
+            --window-size 540 380 \
             --icon-size 128 \
-            --icon "MacStatusBar.app" 150 185 \
-            --app-drop-link 450 185 \
+            --icon "MacStatusBar.app" 140 170 \
+            --app-drop-link 400 170 \
             --hide-extension "MacStatusBar.app" \
+            --no-internet-enable \
             "MacStatusBar-${{ github.ref_name }}.dmg" \
-            "dist/" || true
-
-          # Fallback if create-dmg fails (e.g., no icon)
-          if [ ! -f "MacStatusBar-${{ github.ref_name }}.dmg" ]; then
-            hdiutil create -volname "MacStatusBar" -srcfolder dist -ov -format UDZO "MacStatusBar-${{ github.ref_name }}.dmg"
-          fi
+            "dist/"
 
           # Remove any temporary rw.* DMG files created by create-dmg
           rm -f rw.*.dmg
+
+          # Verify DMG was created
+          ls -la *.dmg
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
