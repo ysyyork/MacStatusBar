@@ -176,10 +176,14 @@ struct LegendItem: View {
 // MARK: - Menu Footer Buttons (Settings + Quit)
 
 struct MenuFooterButtons: View {
+    @Environment(\.dismissWindow) private var dismissWindow
+
     var body: some View {
         VStack(spacing: 0) {
-            // Settings Button using SettingsLink
-            SettingsLink {
+            // Settings Button
+            Button(action: {
+                openSettings()
+            }) {
                 HStack {
                     Text("Settings...")
                         .foregroundColor(.primary)
@@ -193,6 +197,7 @@ struct MenuFooterButtons: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(",", modifiers: .command)
 
             Divider()
                 .padding(.horizontal, 12)
@@ -215,6 +220,22 @@ struct MenuFooterButtons: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut("q")
+        }
+    }
+
+    private func openSettings() {
+        // Close the menu first
+        NSApp.keyWindow?.close()
+
+        // Open Settings window after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if #available(macOS 14.0, *) {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } else {
+                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+            }
+            // Bring app to front to show Settings
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 }
