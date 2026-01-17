@@ -180,46 +180,61 @@ struct CPUMenuBarView: View {
     }
 
     var body: some View {
-        Image(nsImage: createCPUImage())
+        if isHighUsage {
+            // Use NSImage approach for red color (non-template)
+            Image(nsImage: createCPUImage())
+        } else {
+            // Use native SwiftUI for normal state (matches disk view sizing)
+            HStack(spacing: 4) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 11))
+                Text(String(format: "%.0f%%", cpuUsage))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+            }
+            .foregroundColor(.primary)
+        }
     }
 
     private func createCPUImage() -> NSImage {
         let text = String(format: "%.0f%%", cpuUsage)
+
+        // Get screen scale for Retina support
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
         let width: CGFloat = 55
-        let height: CGFloat = 16
+        let height: CGFloat = 18
 
         let image = NSImage(size: NSSize(width: width, height: height))
+
         image.lockFocus()
 
-        // Draw CPU icon using SF Symbol
-        let iconAttachment = NSTextAttachment()
-        let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
-        if let iconImage = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil)?.withSymbolConfiguration(iconConfig) {
-            iconAttachment.image = iconImage
-        }
-
-        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
-        let textColor = isHighUsage ? NSColor.red : NSColor.black
+        let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+        let textColor = NSColor.red
 
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor
         ]
 
-        // Draw icon
+        // Draw icon with red tint
         if let iconImage = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil) {
-            let iconRect = NSRect(x: 0, y: 2, width: 12, height: 12)
-            iconImage.draw(in: iconRect)
+            let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+            if let configuredIcon = iconImage.withSymbolConfiguration(config) {
+                let tintedIcon = configuredIcon.copy() as! NSImage
+                tintedIcon.lockFocus()
+                textColor.set()
+                let iconRect = NSRect(origin: .zero, size: tintedIcon.size)
+                iconRect.fill(using: .sourceAtop)
+                tintedIcon.unlockFocus()
+                tintedIcon.draw(in: NSRect(x: 0, y: 3, width: 13, height: 13))
+            }
         }
 
         // Draw text
         let textString = NSAttributedString(string: text, attributes: attrs)
-        textString.draw(at: NSPoint(x: 15, y: 1))
+        textString.draw(at: NSPoint(x: 16, y: 2))
 
         image.unlockFocus()
-
-        // Only use template mode when not showing warning color
-        image.isTemplate = !isHighUsage
+        image.isTemplate = false
         return image
     }
 }
