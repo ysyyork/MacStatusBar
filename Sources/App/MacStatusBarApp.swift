@@ -198,14 +198,28 @@ struct CPUMenuBarView: View {
     private func createCPUImage() -> NSImage {
         let text = String(format: "%.0f%%", cpuUsage)
 
-        // Get screen scale for Retina support
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
         let width: CGFloat = 55
         let height: CGFloat = 18
 
+        // Create image with proper Retina support
         let image = NSImage(size: NSSize(width: width, height: height))
 
-        image.lockFocus()
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(width * 2),
+            pixelsHigh: Int(height * 2),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        )!
+        rep.size = NSSize(width: width, height: height)
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 
         let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
         let textColor = NSColor.red
@@ -233,7 +247,9 @@ struct CPUMenuBarView: View {
         let textString = NSAttributedString(string: text, attributes: attrs)
         textString.draw(at: NSPoint(x: 16, y: 2))
 
-        image.unlockFocus()
+        NSGraphicsContext.restoreGraphicsState()
+
+        image.addRepresentation(rep)
         image.isTemplate = false
         return image
     }
