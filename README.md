@@ -62,6 +62,17 @@ An open-source system monitoring status bar app for macOS users.
 
 3. Build and run (⌘R)
 
+## Running Tests
+
+### In Xcode
+1. Open `MacStatusBar.xcodeproj`
+2. Press `⌘U` or go to **Product → Test**
+
+### From Command Line
+```bash
+xcodebuild test -scheme MacStatusBar -destination 'platform=macOS'
+```
+
 ## Architecture
 
 The app follows the **MVVM (Model-View-ViewModel)** pattern:
