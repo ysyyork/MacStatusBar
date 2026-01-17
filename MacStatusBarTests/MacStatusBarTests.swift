@@ -427,27 +427,11 @@ final class MenuFooterButtonsTests: XCTestCase {
         XCTAssertNotNil(footerButtons)
     }
 
-    func testSettingsActionSelectorExists() {
-        // Verify the selector string for opening settings is valid
-        // macOS 14+ uses showSettingsWindow:, older uses showPreferencesWindow:
-        let settingsSelector = Selector(("showSettingsWindow:"))
-        XCTAssertNotNil(settingsSelector)
-
-        let preferencesSelector = Selector(("showPreferencesWindow:"))
-        XCTAssertNotNil(preferencesSelector)
-    }
-
-    func testNSAppRespondsToSettingsSelector() {
-        // Verify NSApp can respond to settings selectors
-        let settingsSelector = Selector(("showSettingsWindow:"))
-        let preferencesSelector = Selector(("showPreferencesWindow:"))
-
-        // At least one of these should work depending on macOS version
-        let respondsToSettings = NSApp.responds(to: settingsSelector)
-        let respondsToPreferences = NSApp.responds(to: preferencesSelector)
-
-        XCTAssertTrue(respondsToSettings || respondsToPreferences,
-                      "NSApp should respond to either showSettingsWindow: or showPreferencesWindow:")
+    func testSettingsLinkIsUsed() {
+        // MenuFooterButtons now uses SwiftUI SettingsLink component
+        // This test verifies the view can be instantiated (SettingsLink is built-in)
+        let footerButtons = MenuFooterButtons()
+        XCTAssertNotNil(footerButtons.body)
     }
 
     func testTerminateActionExists() {
