@@ -175,6 +175,10 @@ typealias MenuBarView = NetworkMenuBarView
 struct CPUMenuBarView: View {
     let cpuUsage: Double
 
+    private var isHighUsage: Bool {
+        cpuUsage > 90
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "cpu")
@@ -182,6 +186,6 @@ struct CPUMenuBarView: View {
             Text(String(format: "%.0f%%", cpuUsage))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
         }
-        .foregroundColor(.primary)  // Adapts to light/dark menu bar
+        .foregroundColor(isHighUsage ? .red : .primary)
     }
 }
