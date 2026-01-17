@@ -65,25 +65,32 @@ struct MacStatusBarApp: App {
     @StateObject private var networkMonitor = NetworkMonitor()
     @StateObject private var cpuMonitor = CPUMonitor()
     @StateObject private var diskMonitor = DiskMonitor()
+    @StateObject private var settings = AppSettings.shared
 
     // Initialize the coordinator to start monitoring
     private let coordinator = MenuBarCoordinator.shared
 
     var body: some Scene {
+        // Settings Window
+        Settings {
+            SettingsView()
+        }
+
         // Network Monitor Menu Bar Extra
-        MenuBarExtra {
-            NetworkMenuContentView(monitor: networkMonitor)
+        MenuBarExtra(isInserted: $settings.showNetworkMonitor) {
+            NetworkMenuContentView(monitor: networkMonitor, settings: settings)
         } label: {
             NetworkMenuBarView(
                 uploadSpeed: networkMonitor.uploadSpeed,
-                downloadSpeed: networkMonitor.downloadSpeed
+                downloadSpeed: networkMonitor.downloadSpeed,
+                settings: settings
             )
         }
         .menuBarExtraStyle(.window)
 
         // CPU/GPU Monitor Menu Bar Extra
-        MenuBarExtra {
-            CPUMenuContentView(monitor: cpuMonitor)
+        MenuBarExtra(isInserted: $settings.showCPUMonitor) {
+            CPUMenuContentView(monitor: cpuMonitor, settings: settings)
         } label: {
             CPUMenuBarView(
                 cpuUsage: cpuMonitor.userCPU + cpuMonitor.systemCPU
@@ -92,8 +99,8 @@ struct MacStatusBarApp: App {
         .menuBarExtraStyle(.window)
 
         // Disk Monitor Menu Bar Extra
-        MenuBarExtra {
-            DiskMenuContentView(monitor: diskMonitor)
+        MenuBarExtra(isInserted: $settings.showDiskMonitor) {
+            DiskMenuContentView(monitor: diskMonitor, settings: settings)
         } label: {
             DiskMenuBarView(diskUsage: diskMonitor.mainDiskUsage)
         }
@@ -106,44 +113,54 @@ struct MacStatusBarApp: App {
 struct NetworkMenuBarView: View {
     let uploadSpeed: Double
     let downloadSpeed: Double
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         Image(nsImage: createSpeedImage())
     }
 
     private func createSpeedImage() -> NSImage {
+        let showUpload = settings.networkShowUpload
+        let showDownload = settings.networkShowDownload
+
+        // Determine layout based on what's shown
+        let bothShown = showUpload && showDownload
         let width: CGFloat = 70
-        let height: CGFloat = 22
+        let height: CGFloat = bothShown ? 22 : 16
 
         let image = NSImage(size: NSSize(width: width, height: height))
         image.lockFocus()
 
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
-        let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed))"
-        let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed))"
-
-        // Use black for template image - macOS will invert automatically
         let textColor = NSColor.black
 
-        let upAttrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: textColor
-        ]
-        let downAttrs: [NSAttributedString.Key: Any] = [
+        let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor
         ]
 
-        // Draw upload (top line)
-        let upString = NSAttributedString(string: upText, attributes: upAttrs)
-        upString.draw(at: NSPoint(x: 0, y: height - 11))
+        if bothShown {
+            // Two lines: upload on top, download below
+            let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed))"
+            let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed))"
 
-        // Draw download (bottom line)
-        let downString = NSAttributedString(string: downText, attributes: downAttrs)
-        downString.draw(at: NSPoint(x: 0, y: 0))
+            let upString = NSAttributedString(string: upText, attributes: attrs)
+            upString.draw(at: NSPoint(x: 0, y: height - 11))
+
+            let downString = NSAttributedString(string: downText, attributes: attrs)
+            downString.draw(at: NSPoint(x: 0, y: 0))
+        } else if showUpload {
+            let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed))"
+            let upString = NSAttributedString(string: upText, attributes: attrs)
+            upString.draw(at: NSPoint(x: 0, y: 3))
+        } else if showDownload {
+            let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed))"
+            let downString = NSAttributedString(string: downText, attributes: attrs)
+            downString.draw(at: NSPoint(x: 0, y: 3))
+        }
 
         image.unlockFocus()
-        image.isTemplate = true  // Enables automatic color adaptation
+        image.isTemplate = true
         return image
     }
 }

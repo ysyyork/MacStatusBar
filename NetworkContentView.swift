@@ -4,6 +4,7 @@ import SwiftUI
 
 struct NetworkMenuContentView: View {
     @ObservedObject var monitor: NetworkMonitor
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -135,7 +136,7 @@ struct NetworkMenuContentView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
 
-                    ForEach(monitor.topProcesses) { process in
+                    ForEach(Array(monitor.topProcesses.prefix(settings.networkProcessCount))) { process in
                         HStack {
                             ProcessIconView(pid: process.pid, processName: process.name, size: 14)
                             Text(process.name)
@@ -158,8 +159,8 @@ struct NetworkMenuContentView: View {
             Divider()
                 .padding(.horizontal, 12)
 
-            // Quit Button
-            QuitButton()
+            // Settings and Quit Buttons
+            MenuFooterButtons()
         }
         .frame(width: 280)
         .padding(.vertical, 8)
