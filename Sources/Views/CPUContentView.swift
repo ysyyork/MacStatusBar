@@ -245,7 +245,7 @@ struct CPUMenuContentView: View {
             SectionHeader(title: "UPTIME")
 
             // Uptime value
-            Text(formatUptime(monitor.uptime))
+            Text(SystemFormatter.formatUptime(monitor.uptime))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundColor(.primary)
                 .padding(.horizontal, 16)
@@ -259,20 +259,6 @@ struct CPUMenuContentView: View {
         }
         .frame(width: 280)
         .padding(.vertical, 8)
-    }
-
-    private func formatUptime(_ interval: TimeInterval) -> String {
-        let days = Int(interval) / 86400
-        let hours = (Int(interval) % 86400) / 3600
-        let minutes = (Int(interval) % 3600) / 60
-
-        if days > 0 {
-            return "\(days) days, \(hours) hours, \(minutes) minutes"
-        } else if hours > 0 {
-            return "\(hours) hours, \(minutes) minutes"
-        } else {
-            return "\(minutes) minutes"
-        }
     }
 
     // MARK: - Computed Properties

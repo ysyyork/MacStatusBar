@@ -41,6 +41,14 @@ struct ByteFormatter {
         }
     }
 
+    /// Compact speed format, returns "—" for zero or negative values
+    static func compactSpeedOrDash(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond <= 0 {
+            return "—"
+        }
+        return compactSpeed(bytesPerSecond)
+    }
+
     static func compactSpeed(_ bytesPerSecond: Double) -> String {
         if bytesPerSecond < 0 {
             return "—"
