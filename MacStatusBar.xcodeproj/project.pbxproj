@@ -18,6 +18,7 @@
 		B2000001234567890009 /* DiskContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000223456789000A /* DiskContentView.swift */; };
 		B200000123456789000B /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000223456789000B /* AppSettings.swift */; };
 		B200000123456789000C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000223456789000C /* SettingsView.swift */; };
+		B200000123456789000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B200000223456789000D /* Assets.xcassets */; };
 		B2000001234567890100 /* MacStatusBarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890100 /* MacStatusBarTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -44,6 +45,7 @@
 		B200000223456789000A /* DiskContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskContentView.swift; sourceTree = "<group>"; };
 		B200000223456789000B /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		B200000223456789000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B200000223456789000D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B2000002234567890100 /* MacStatusBarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStatusBarTests.swift; sourceTree = "<group>"; };
 		B2000003234567890001 /* MacStatusBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacStatusBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2000003234567890100 /* MacStatusBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacStatusBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,6 +67,17 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B200000423456789000D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B200000123456789000D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXGroup section */
 		B2000005234567890001 = {
@@ -90,6 +103,7 @@
 				B2000002234567890004 /* Formatters.swift */,
 				B200000223456789000B /* AppSettings.swift */,
 				B200000223456789000C /* SettingsView.swift */,
+				B200000223456789000D /* Assets.xcassets */,
 				B2000002234567890005 /* Info.plist */,
 			);
 			path = "";
@@ -121,6 +135,7 @@
 			buildPhases = (
 				B2000008234567890001 /* Sources */,
 				B2000004234567890001 /* Frameworks */,
+				B200000423456789000D /* Resources */,
 			);
 			buildRules = (
 			);
