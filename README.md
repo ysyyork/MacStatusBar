@@ -39,7 +39,10 @@ Three separate menu bar icons for Network, CPU, and Disk monitoring:
 ## Requirements
 
 - macOS 14.0 (Sonoma) or later
+- Apple Silicon (M1/M2/M3) recommended
 - Xcode 15.0 or later (for building)
+
+> **Note:** Intel Mac support is not fully verified. If you encounter issues on Intel-based Macs, please [open an issue](https://github.com/ysyyork/MacStatusBar/issues) or submit a pull request.
 
 ## Installation
 
