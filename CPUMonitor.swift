@@ -178,10 +178,8 @@ final class CPUMonitor: ObservableObject {
     // MARK: - CPU Usage
 
     private func getCPUUsage() -> (user: Double, system: Double, idle: Double) {
-        var cpuInfo: host_cpu_load_info?
-        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.stride / MemoryLayout<integer_t>.stride)
-
         let hostPort = mach_host_self()
+        var count = UInt32(HOST_CPU_LOAD_INFO_COUNT)
         var cpuLoadInfo = host_cpu_load_info()
 
         let result = withUnsafeMutablePointer(to: &cpuLoadInfo) { ptr in
@@ -194,21 +192,30 @@ final class CPUMonitor: ObservableObject {
             return (0, 0, 100)
         }
 
-        cpuInfo = cpuLoadInfo
+        // Access cpu_ticks using tuple indices
+        let user = cpuLoadInfo.cpu_ticks.0
+        let system = cpuLoadInfo.cpu_ticks.1
+        let idle = cpuLoadInfo.cpu_ticks.2
+        let nice = cpuLoadInfo.cpu_ticks.3
 
-        guard let current = cpuInfo, let previous = previousCPUInfo else {
-            previousCPUInfo = cpuInfo
+        guard let previous = previousCPUInfo else {
+            previousCPUInfo = cpuLoadInfo
             return (0, 0, 100)
         }
 
-        let userDiff = Double(current.cpu_ticks.0 - previous.cpu_ticks.0)
-        let systemDiff = Double(current.cpu_ticks.1 - previous.cpu_ticks.1)
-        let idleDiff = Double(current.cpu_ticks.2 - previous.cpu_ticks.2)
-        let niceDiff = Double(current.cpu_ticks.3 - previous.cpu_ticks.3)
+        let prevUser = previous.cpu_ticks.0
+        let prevSystem = previous.cpu_ticks.1
+        let prevIdle = previous.cpu_ticks.2
+        let prevNice = previous.cpu_ticks.3
+
+        let userDiff = Double(Int64(user) - Int64(prevUser))
+        let systemDiff = Double(Int64(system) - Int64(prevSystem))
+        let idleDiff = Double(Int64(idle) - Int64(prevIdle))
+        let niceDiff = Double(Int64(nice) - Int64(prevNice))
 
         let totalDiff = userDiff + systemDiff + idleDiff + niceDiff
 
-        previousCPUInfo = cpuInfo
+        previousCPUInfo = cpuLoadInfo
 
         guard totalDiff > 0 else {
             return (0, 0, 100)
@@ -218,7 +225,7 @@ final class CPUMonitor: ObservableObject {
         let systemPercent = systemDiff / totalDiff * 100
         let idlePercent = idleDiff / totalDiff * 100
 
-        return (userPercent, systemPercent, idlePercent)
+        return (max(0, userPercent), max(0, systemPercent), max(0, idlePercent))
     }
 
     // MARK: - CPU Temperature
@@ -458,13 +465,40 @@ final class CPUMonitor: ObservableObject {
         var size = MemoryLayout<UInt64>.size
         sysctlbyname("hw.memsize", &totalMemory, &size, nil, 0)
 
-        // Get memory statistics
+        // Get memory statistics using HOST_VM_INFO64
         var stats = vm_statistics64()
-        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
+        var count = UInt32(HOST_VM_INFO64_COUNT)
 
         let result = withUnsafeMutablePointer(to: &stats) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
                 host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &count)
+            }
+        }
+
+        guard result == KERN_SUCCESS else {
+            // Fallback: try HOST_VM_INFO (32-bit) for older systems
+            return getMemoryInfoFallback(totalMemory: totalMemory)
+        }
+
+        let pageSize = UInt64(vm_kernel_page_size)
+        let active = UInt64(stats.active_count) * pageSize
+        let wired = UInt64(stats.wire_count) * pageSize
+        let compressed = UInt64(stats.compressor_page_count) * pageSize
+
+        // Used memory = active + wired + compressed (excluding speculative/cached)
+        let used = active + wired + compressed
+
+        return (used, totalMemory)
+    }
+
+    private func getMemoryInfoFallback(totalMemory: UInt64) -> (used: UInt64, total: UInt64) {
+        // Fallback using 32-bit vm_statistics for older systems
+        var stats = vm_statistics()
+        var count = UInt32(HOST_VM_INFO_COUNT)
+
+        let result = withUnsafeMutablePointer(to: &stats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
+                host_statistics(mach_host_self(), HOST_VM_INFO, intPtr, &count)
             }
         }
 
@@ -475,11 +509,8 @@ final class CPUMonitor: ObservableObject {
         let pageSize = UInt64(vm_kernel_page_size)
         let active = UInt64(stats.active_count) * pageSize
         let wired = UInt64(stats.wire_count) * pageSize
-        let compressed = UInt64(stats.compressor_page_count) * pageSize
-        let speculative = UInt64(stats.speculative_count) * pageSize
 
-        // Used memory = active + wired + compressed (excluding speculative/cached)
-        let used = active + wired + compressed
+        let used = active + wired
 
         return (used, totalMemory)
     }
