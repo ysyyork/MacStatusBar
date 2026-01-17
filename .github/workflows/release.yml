@@ -40,8 +40,10 @@ jobs:
           mkdir -p dist
           cp -R "$APP_PATH" dist/
 
-          # Remove code signature (if any) to avoid issues
-          codesign --remove-signature dist/MacStatusBar.app 2>/dev/null || true
+          # Ad-hoc sign the app (required for macOS to allow running)
+          codesign --force --deep --sign - dist/MacStatusBar.app
+          echo "App signed successfully"
+          codesign -dv dist/MacStatusBar.app
 
       - name: Install create-dmg
         run: brew install create-dmg
