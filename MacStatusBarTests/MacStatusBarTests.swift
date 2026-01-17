@@ -291,3 +291,111 @@ final class ProcessDiskUsageTests: XCTestCase {
         XCTAssertEqual(process.pid, 1234)
     }
 }
+
+// MARK: - Speed Unit Tests
+
+final class SpeedUnitTests: XCTestCase {
+
+    func testSpeedUnitRawValues() {
+        XCTAssertEqual(SpeedUnit.auto.rawValue, "Auto")
+        XCTAssertEqual(SpeedUnit.bytesPerSec.rawValue, "B/s")
+        XCTAssertEqual(SpeedUnit.kilobytesPerSec.rawValue, "KB/s")
+        XCTAssertEqual(SpeedUnit.megabytesPerSec.rawValue, "MB/s")
+    }
+
+    func testSpeedUnitFromRawValue() {
+        XCTAssertEqual(SpeedUnit(rawValue: "Auto"), .auto)
+        XCTAssertEqual(SpeedUnit(rawValue: "B/s"), .bytesPerSec)
+        XCTAssertEqual(SpeedUnit(rawValue: "KB/s"), .kilobytesPerSec)
+        XCTAssertEqual(SpeedUnit(rawValue: "MB/s"), .megabytesPerSec)
+    }
+
+    func testSpeedUnitFromInvalidRawValue() {
+        // Invalid raw values should default to .auto
+        XCTAssertEqual(SpeedUnit(rawValue: "invalid"), .auto)
+        XCTAssertEqual(SpeedUnit(rawValue: ""), .auto)
+        XCTAssertEqual(SpeedUnit(rawValue: "Gbps"), .auto)
+    }
+
+    func testSpeedUnitAllCases() {
+        let allCases = SpeedUnit.allCases
+        XCTAssertEqual(allCases.count, 4)
+        XCTAssertTrue(allCases.contains(.auto))
+        XCTAssertTrue(allCases.contains(.bytesPerSec))
+        XCTAssertTrue(allCases.contains(.kilobytesPerSec))
+        XCTAssertTrue(allCases.contains(.megabytesPerSec))
+    }
+}
+
+// MARK: - App Settings Tests
+
+final class AppSettingsTests: XCTestCase {
+
+    func testSharedInstanceExists() {
+        let settings = AppSettings.shared
+        XCTAssertNotNil(settings)
+    }
+
+    func testSharedInstanceIsSingleton() {
+        let settings1 = AppSettings.shared
+        let settings2 = AppSettings.shared
+        XCTAssertTrue(settings1 === settings2)
+    }
+
+    func testDefaultUpdateInterval() {
+        // Test that default update interval is 1.0 second
+        // Note: This test verifies the @AppStorage default, actual value may differ
+        // if previously saved by the app
+        let settings = AppSettings.shared
+        XCTAssertGreaterThan(settings.updateInterval, 0)
+        XCTAssertLessThanOrEqual(settings.updateInterval, 10)
+    }
+
+    func testDefaultProcessCounts() {
+        let settings = AppSettings.shared
+        // Process counts should be reasonable values (1-10)
+        XCTAssertGreaterThanOrEqual(settings.networkProcessCount, 1)
+        XCTAssertLessThanOrEqual(settings.networkProcessCount, 10)
+
+        XCTAssertGreaterThanOrEqual(settings.cpuProcessCount, 1)
+        XCTAssertLessThanOrEqual(settings.cpuProcessCount, 10)
+
+        XCTAssertGreaterThanOrEqual(settings.diskProcessCount, 1)
+        XCTAssertLessThanOrEqual(settings.diskProcessCount, 10)
+    }
+
+    func testVisibilitySettingsAreBool() {
+        let settings = AppSettings.shared
+        // These should be Bool values (either true or false)
+        XCTAssertNotNil(settings.showNetworkMonitor as Bool)
+        XCTAssertNotNil(settings.showCPUMonitor as Bool)
+        XCTAssertNotNil(settings.showDiskMonitor as Bool)
+    }
+
+    func testNetworkSettingsAreBool() {
+        let settings = AppSettings.shared
+        XCTAssertNotNil(settings.networkShowUpload as Bool)
+        XCTAssertNotNil(settings.networkShowDownload as Bool)
+    }
+
+    func testCPUSettingsAreBool() {
+        let settings = AppSettings.shared
+        XCTAssertNotNil(settings.cpuShowTemperature as Bool)
+        XCTAssertNotNil(settings.cpuShowGPU as Bool)
+        XCTAssertNotNil(settings.cpuShowMemory as Bool)
+        XCTAssertNotNil(settings.cpuShowLoadAverage as Bool)
+        XCTAssertNotNil(settings.cpuShowUptime as Bool)
+    }
+
+    func testDiskSettingsAreBool() {
+        let settings = AppSettings.shared
+        XCTAssertNotNil(settings.diskShowNetworkDisks as Bool)
+        XCTAssertNotNil(settings.diskShowProcesses as Bool)
+    }
+
+    func testNetworkSpeedUnitIsValid() {
+        let settings = AppSettings.shared
+        let validUnits = SpeedUnit.allCases
+        XCTAssertTrue(validUnits.contains(settings.networkSpeedUnit))
+    }
+}

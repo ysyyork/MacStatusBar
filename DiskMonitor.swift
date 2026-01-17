@@ -33,6 +33,16 @@ struct ProcessDiskUsage: Identifiable {
     let pid: Int32
 }
 
+// Internal struct for tracking recent process activity
+struct RecentProcessActivity {
+    let name: String
+    let pid: Int32
+    var totalActivity: UInt64  // Cumulative read + write since tracking started
+    var lastActiveTime: Date   // Last time this process had non-zero activity
+    var currentReadSpeed: Double
+    var currentWriteSpeed: Double
+}
+
 // MARK: - Disk Monitor (ViewModel)
 
 final class DiskMonitor: ObservableObject {
@@ -55,6 +65,10 @@ final class DiskMonitor: ObservableObject {
     private var processTimer: DispatchSourceTimer?
     private var previousDiskStats: [String: (read: UInt64, write: UInt64)] = [:]
     private var previousProcessStats: [Int32: (read: UInt64, write: UInt64)] = [:]
+
+    // Track recently active processes to show even when current activity is 0
+    private var recentProcessActivity: [Int32: RecentProcessActivity] = [:]
+    private let recentActivityTimeout: TimeInterval = 15.0  // Keep showing for 15 seconds after last activity
 
     // MARK: - Initialization
 
@@ -298,7 +312,7 @@ final class DiskMonitor: ObservableObject {
     }
 
     private func getTopDiskProcesses() -> [ProcessDiskUsage] {
-        var result: [ProcessDiskUsage] = []
+        let now = Date()
 
         // Use fs_usage or iotop equivalent
         // Since fs_usage requires root, we'll use a different approach
@@ -332,6 +346,9 @@ final class DiskMonitor: ObservableObject {
                     }
                 }
 
+                // Get current running PIDs for cleanup
+                let currentPids = Set(processes.map { $0.pid })
+
                 // Get I/O stats for each process using /proc equivalent on macOS
                 for (pid, name) in processes.prefix(100) {
                     if let ioStats = getProcessIOStats(pid: pid) {
@@ -341,30 +358,64 @@ final class DiskMonitor: ObservableObject {
 
                         previousProcessStats[pid] = ioStats
 
-                        // Only include if there's activity (speed per second, poll every 2s)
+                        // Calculate speed (poll every 2s)
                         let readSpeed = Double(readDelta) / 2.0
                         let writeSpeed = Double(writeDelta) / 2.0
+                        let hasActivity = readSpeed > 0 || writeSpeed > 0
 
-                        if readSpeed > 0 || writeSpeed > 0 {
-                            result.append(ProcessDiskUsage(
-                                name: name,
-                                readSpeed: readSpeed,
-                                writeSpeed: writeSpeed,
-                                pid: pid
-                            ))
+                        // Update or create recent activity entry
+                        if hasActivity {
+                            if var existing = recentProcessActivity[pid] {
+                                existing.totalActivity += readDelta + writeDelta
+                                existing.lastActiveTime = now
+                                existing.currentReadSpeed = readSpeed
+                                existing.currentWriteSpeed = writeSpeed
+                                recentProcessActivity[pid] = existing
+                            } else {
+                                recentProcessActivity[pid] = RecentProcessActivity(
+                                    name: name,
+                                    pid: pid,
+                                    totalActivity: readDelta + writeDelta,
+                                    lastActiveTime: now,
+                                    currentReadSpeed: readSpeed,
+                                    currentWriteSpeed: writeSpeed
+                                )
+                            }
+                        } else if var existing = recentProcessActivity[pid] {
+                            // Process exists but no current activity - update speeds to 0
+                            existing.currentReadSpeed = 0
+                            existing.currentWriteSpeed = 0
+                            recentProcessActivity[pid] = existing
                         }
                     }
                 }
 
-                // Sort by total activity and take top 5
-                result.sort { ($0.readSpeed + $0.writeSpeed) > ($1.readSpeed + $1.writeSpeed) }
-                result = Array(result.prefix(5))
+                // Remove entries for processes that no longer exist or have timed out
+                recentProcessActivity = recentProcessActivity.filter { (pid, activity) in
+                    // Keep if process still exists and hasn't timed out
+                    let isStillRunning = currentPids.contains(pid)
+                    let isRecent = now.timeIntervalSince(activity.lastActiveTime) < recentActivityTimeout
+                    return isStillRunning && isRecent
+                }
             }
         } catch {
             // Silently fail
         }
 
-        return result
+        // Build result from recent activity, sorted by total activity
+        var result = recentProcessActivity.values
+            .sorted { $0.totalActivity > $1.totalActivity }
+            .prefix(5)
+            .map { activity in
+                ProcessDiskUsage(
+                    name: activity.name,
+                    readSpeed: activity.currentReadSpeed,
+                    writeSpeed: activity.currentWriteSpeed,
+                    pid: activity.pid
+                )
+            }
+
+        return Array(result)
     }
 
     private func getProcessIOStats(pid: Int32) -> (read: UInt64, write: UInt64)? {

@@ -65,16 +65,19 @@ jobs:
             hdiutil create -volname "MacStatusBar" -srcfolder dist -ov -format UDZO "MacStatusBar-${{ github.ref_name }}.dmg"
           fi
 
+          # Remove any temporary rw.* DMG files created by create-dmg
+          rm -f rw.*.dmg
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: MacStatusBar-DMG
-          path: "*.dmg"
+          path: "MacStatusBar-${{ github.ref_name }}.dmg"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: "*.dmg"
+          files: "MacStatusBar-${{ github.ref_name }}.dmg"
           body: |
             ## MacStatusBar ${{ github.ref_name }}
 
@@ -84,7 +87,7 @@ jobs:
             3. **First launch**: Right-click the app → Open → Open (required for unsigned apps)
 
             ### Requirements
-            - macOS 13.0 (Ventura) or later
+            - macOS 14.0 (Sonoma) or later
 
             ### What's New
             See [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes.
