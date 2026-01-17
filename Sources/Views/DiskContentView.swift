@@ -74,9 +74,9 @@ struct DiskMenuContentView: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                            Text(formatDiskSpeed(process.readSpeed))
+                            Text(ByteFormatter.compactSpeedOrDash(process.readSpeed))
                                 .frame(width: 65, alignment: .trailing)
-                            Text(formatDiskSpeed(process.writeSpeed))
+                            Text(ByteFormatter.compactSpeedOrDash(process.writeSpeed))
                                 .frame(width: 65, alignment: .trailing)
                         }
                         .font(.system(size: 11, design: .monospaced))
@@ -95,13 +95,6 @@ struct DiskMenuContentView: View {
         }
         .frame(width: 300)
         .padding(.vertical, 8)
-    }
-
-    private func formatDiskSpeed(_ bytesPerSecond: Double) -> String {
-        if bytesPerSecond <= 0 {
-            return "—"
-        }
-        return ByteFormatter.compactSpeed(bytesPerSecond)
     }
 }
 
@@ -125,7 +118,7 @@ struct DiskItemView: View {
             }
 
             // Free space / Total space
-            Text("\(formatBytes(disk.freeSpace)) free of \(formatBytes(disk.totalSpace))")
+            Text(SystemFormatter.formatDiskUsage(free: disk.freeSpace, total: disk.totalSpace))
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
@@ -155,23 +148,6 @@ struct DiskItemView: View {
                     }
                 }
             }
-        }
-    }
-
-    private func formatBytes(_ bytes: UInt64) -> String {
-        let units = ["B", "KB", "MB", "GB", "TB"]
-        var value = Double(bytes)
-        var unitIndex = 0
-
-        while value >= 1000 && unitIndex < units.count - 1 {
-            value /= 1000
-            unitIndex += 1
-        }
-
-        if unitIndex == 0 {
-            return String(format: "%.0f %@", value, units[unitIndex])
-        } else {
-            return String(format: "%.1f %@", value, units[unitIndex])
         }
     }
 }
@@ -297,32 +273,9 @@ struct DiskMenuBarViewLegacy: View {
                 .font(.system(size: 11))
 
             if readSpeed > 0 || writeSpeed > 0 {
-                Text(formatSpeed(max(readSpeed, writeSpeed)))
+                Text(ByteFormatter.compactSpeedOrDash(max(readSpeed, writeSpeed)))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
             }
-        }
-    }
-
-    private func formatSpeed(_ bytesPerSecond: Double) -> String {
-        if bytesPerSecond <= 0 {
-            return "—"
-        }
-
-        let units = ["B/s", "KB/s", "MB/s", "GB/s"]
-        var value = bytesPerSecond
-        var unitIndex = 0
-
-        while value >= 1000 && unitIndex < units.count - 1 {
-            value /= 1000
-            unitIndex += 1
-        }
-
-        if value >= 100 {
-            return String(format: "%.0f %@", value, units[unitIndex])
-        } else if value >= 10 {
-            return String(format: "%.0f %@", value, units[unitIndex])
-        } else {
-            return String(format: "%.1f %@", value, units[unitIndex])
         }
     }
 }
