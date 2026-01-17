@@ -172,3 +172,61 @@ struct LegendItem: View {
         }
     }
 }
+
+// MARK: - Menu Footer Buttons (Settings + Quit)
+
+struct MenuFooterButtons: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            // Settings Button
+            Button(action: {
+                openSettings()
+            }) {
+                HStack {
+                    Text("Settings...")
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Text("⌘,")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(",", modifiers: .command)
+
+            Divider()
+                .padding(.horizontal, 12)
+
+            // Quit Button
+            Button(action: {
+                NSApplication.shared.terminate(nil)
+            }) {
+                HStack {
+                    Text("Quit")
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Text("⌘Q")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("q")
+        }
+    }
+
+    private func openSettings() {
+        // Open the Settings window
+        if #available(macOS 14.0, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+    }
+}

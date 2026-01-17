@@ -4,6 +4,7 @@ import SwiftUI
 
 struct DiskMenuContentView: View {
     @ObservedObject var monitor: DiskMonitor
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -89,8 +90,8 @@ struct DiskMenuContentView: View {
             Divider()
                 .padding(.horizontal, 12)
 
-            // Quit Button
-            QuitButton()
+            // Settings and Quit Buttons
+            MenuFooterButtons()
         }
         .frame(width: 300)
         .padding(.vertical, 8)

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CPUMenuContentView: View {
     @ObservedObject var monitor: CPUMonitor
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -245,24 +246,8 @@ struct CPUMenuContentView: View {
             Divider()
                 .padding(.horizontal, 12)
 
-            // Quit Button
-            Button(action: {
-                NSApplication.shared.terminate(nil)
-            }) {
-                HStack {
-                    Text("Quit")
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Text("\u{2318}Q")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("q")
+            // Settings and Quit Buttons
+            MenuFooterButtons()
         }
         .frame(width: 280)
         .padding(.vertical, 8)

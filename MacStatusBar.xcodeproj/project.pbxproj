@@ -16,6 +16,8 @@
 		B2000001234567890007 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890008 /* SharedViews.swift */; };
 		B2000001234567890008 /* DiskMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890009 /* DiskMonitor.swift */; };
 		B2000001234567890009 /* DiskContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000223456789000A /* DiskContentView.swift */; };
+		B200000123456789000B /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000223456789000B /* AppSettings.swift */; };
+		B200000123456789000C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000223456789000C /* SettingsView.swift */; };
 		B2000001234567890100 /* MacStatusBarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890100 /* MacStatusBarTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -40,6 +42,8 @@
 		B2000002234567890008 /* SharedViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedViews.swift; sourceTree = "<group>"; };
 		B2000002234567890009 /* DiskMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskMonitor.swift; sourceTree = "<group>"; };
 		B200000223456789000A /* DiskContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskContentView.swift; sourceTree = "<group>"; };
+		B200000223456789000B /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		B200000223456789000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B2000002234567890100 /* MacStatusBarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStatusBarTests.swift; sourceTree = "<group>"; };
 		B2000003234567890001 /* MacStatusBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacStatusBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2000003234567890100 /* MacStatusBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacStatusBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -84,6 +88,8 @@
 				B200000223456789000A /* DiskContentView.swift */,
 				B2000002234567890008 /* SharedViews.swift */,
 				B2000002234567890004 /* Formatters.swift */,
+				B200000223456789000B /* AppSettings.swift */,
+				B200000223456789000C /* SettingsView.swift */,
 				B2000002234567890005 /* Info.plist */,
 			);
 			path = "";
@@ -194,6 +200,8 @@
 				B2000001234567890007 /* SharedViews.swift in Sources */,
 				B2000001234567890008 /* DiskMonitor.swift in Sources */,
 				B2000001234567890009 /* DiskContentView.swift in Sources */,
+				B200000123456789000B /* AppSettings.swift in Sources */,
+				B200000123456789000C /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
