@@ -14,7 +14,7 @@ An open-source system monitoring status bar app for macOS users.
 - Per-process network activity (top 5)
 - Speed history graph
 
-### CPU Monitor
+### CPU + GPU + Memory Monitor
 - CPU usage breakdown (User/System/Idle)
 - CPU temperature indicator
 - GPU usage and memory (Apple Silicon & discrete GPUs)
@@ -37,8 +37,8 @@ An open-source system monitoring status bar app for macOS users.
 ### Network Monitor
 ![Network Monitor](docs/network_status.png)
 
-### CPU Monitor
-![CPU Monitor](docs/compute_status.png)
+### CPU + GPU + Memory Monitor
+![CPU + GPU + Memory Monitor](docs/compute_status.png)
 
 ### Disk Monitor
 ![Disk Monitor](docs/disk_status.png)
