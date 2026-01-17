@@ -78,19 +78,23 @@ xcodebuild test -scheme MacStatusBar -destination 'platform=macOS'
 The app follows the **MVVM (Model-View-ViewModel)** pattern:
 
 ```
-├── ViewModels (Monitors)
-│   ├── NetworkMonitor.swift
+Sources/
+├── App/
+│   └── MacStatusBarApp.swift
+├── Models/
+│   └── AppSettings.swift
+├── ViewModels/
 │   ├── CPUMonitor.swift
-│   └── DiskMonitor.swift
-├── Views
-│   ├── NetworkContentView.swift
+│   ├── DiskMonitor.swift
+│   └── NetworkMonitor.swift
+├── Views/
 │   ├── CPUContentView.swift
-│   └── DiskContentView.swift
-├── Shared
-│   ├── SharedViews.swift
-│   └── Formatters.swift
-└── App
-    └── MacStatusBarApp.swift
+│   ├── DiskContentView.swift
+│   ├── NetworkContentView.swift
+│   ├── SettingsView.swift
+│   └── SharedViews.swift
+└── Utilities/
+    └── Formatters.swift
 ```
 
 ## License
