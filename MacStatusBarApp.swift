@@ -65,7 +65,9 @@ struct MacStatusBarApp: App {
     @StateObject private var networkMonitor = NetworkMonitor()
     @StateObject private var cpuMonitor = CPUMonitor()
     @StateObject private var diskMonitor = DiskMonitor()
-    @StateObject private var settings = AppSettings.shared
+
+    // Use ObservedObject for the shared singleton to avoid state conflicts
+    @ObservedObject private var settings = AppSettings.shared
 
     // Initialize the coordinator to start monitoring
     private let coordinator = MenuBarCoordinator.shared

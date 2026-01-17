@@ -57,8 +57,13 @@ final class AppSettings: ObservableObject {
     }
 
     private init() {
-        // Sync launch at login state on init
-        launchAtLogin = SMAppService.mainApp.status == .enabled
+        // Sync launch at login state after a delay to avoid view update issues
+        DispatchQueue.main.async { [weak self] in
+            let isEnabled = SMAppService.mainApp.status == .enabled
+            if self?.launchAtLogin != isEnabled {
+                self?.launchAtLogin = isEnabled
+            }
+        }
     }
 }
 
