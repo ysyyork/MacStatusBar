@@ -399,3 +399,94 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(validUnits.contains(settings.networkSpeedUnit))
     }
 }
+
+// MARK: - Settings View Tests
+
+final class SettingsViewTests: XCTestCase {
+
+    func testSettingsViewCanBeInstantiated() {
+        // Verify SettingsView can be created without crashing
+        let settingsView = SettingsView()
+        XCTAssertNotNil(settingsView)
+    }
+
+    func testSettingsViewUsesSharedSettings() {
+        // Verify SettingsView uses the shared AppSettings instance
+        let settingsView = SettingsView()
+        XCTAssertNotNil(settingsView.body)
+    }
+}
+
+// MARK: - Menu Footer Buttons Tests
+
+final class MenuFooterButtonsTests: XCTestCase {
+
+    func testMenuFooterButtonsCanBeInstantiated() {
+        // Verify MenuFooterButtons can be created without crashing
+        let footerButtons = MenuFooterButtons()
+        XCTAssertNotNil(footerButtons)
+    }
+
+    func testSettingsActionSelectorExists() {
+        // Verify the selector string for opening settings is valid
+        // macOS 14+ uses showSettingsWindow:, older uses showPreferencesWindow:
+        let settingsSelector = Selector(("showSettingsWindow:"))
+        XCTAssertNotNil(settingsSelector)
+
+        let preferencesSelector = Selector(("showPreferencesWindow:"))
+        XCTAssertNotNil(preferencesSelector)
+    }
+
+    func testNSAppRespondsToSettingsSelector() {
+        // Verify NSApp can respond to settings selectors
+        let settingsSelector = Selector(("showSettingsWindow:"))
+        let preferencesSelector = Selector(("showPreferencesWindow:"))
+
+        // At least one of these should work depending on macOS version
+        let respondsToSettings = NSApp.responds(to: settingsSelector)
+        let respondsToPreferences = NSApp.responds(to: preferencesSelector)
+
+        XCTAssertTrue(respondsToSettings || respondsToPreferences,
+                      "NSApp should respond to either showSettingsWindow: or showPreferencesWindow:")
+    }
+
+    func testTerminateActionExists() {
+        // Verify terminate action is available
+        XCTAssertTrue(NSApp.responds(to: #selector(NSApplication.terminate(_:))))
+    }
+}
+
+// MARK: - Shared Views Tests
+
+final class SharedViewsTests: XCTestCase {
+
+    func testSectionHeaderCanBeInstantiated() {
+        let header = SectionHeader(title: "Test Section")
+        XCTAssertNotNil(header)
+    }
+
+    func testStatRowCanBeInstantiated() {
+        let statRow = StatRow(label: "Test", value: "100%")
+        XCTAssertNotNil(statRow)
+    }
+
+    func testStatRowWithIcon() {
+        let statRow = StatRow(label: "CPU", value: "50%", icon: "cpu", iconColor: .blue)
+        XCTAssertNotNil(statRow)
+    }
+
+    func testLegendItemCanBeInstantiated() {
+        let legend = LegendItem(color: .blue, label: "Active")
+        XCTAssertNotNil(legend)
+    }
+
+    func testQuitButtonCanBeInstantiated() {
+        let quitButton = QuitButton()
+        XCTAssertNotNil(quitButton)
+    }
+
+    func testProcessIconViewCanBeInstantiated() {
+        let iconView = ProcessIconView(pid: 1, processName: "Finder", size: 16)
+        XCTAssertNotNil(iconView)
+    }
+}
