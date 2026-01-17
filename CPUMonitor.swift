@@ -179,7 +179,7 @@ final class CPUMonitor: ObservableObject {
 
     private func getCPUUsage() -> (user: Double, system: Double, idle: Double) {
         let hostPort = mach_host_self()
-        var count = UInt32(HOST_CPU_LOAD_INFO_COUNT)
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
         var cpuLoadInfo = host_cpu_load_info()
 
         let result = withUnsafeMutablePointer(to: &cpuLoadInfo) { ptr in
@@ -467,7 +467,7 @@ final class CPUMonitor: ObservableObject {
 
         // Get memory statistics using HOST_VM_INFO64
         var stats = vm_statistics64()
-        var count = UInt32(HOST_VM_INFO64_COUNT)
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
 
         let result = withUnsafeMutablePointer(to: &stats) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
@@ -494,7 +494,7 @@ final class CPUMonitor: ObservableObject {
     private func getMemoryInfoFallback(totalMemory: UInt64) -> (used: UInt64, total: UInt64) {
         // Fallback using 32-bit vm_statistics for older systems
         var stats = vm_statistics()
-        var count = UInt32(HOST_VM_INFO_COUNT)
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics>.size / MemoryLayout<integer_t>.size)
 
         let result = withUnsafeMutablePointer(to: &stats) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
