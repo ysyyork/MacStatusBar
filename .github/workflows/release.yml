@@ -1,0 +1,91 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0
+
+jobs:
+  build:
+    runs-on: macos-14  # Use macOS 14 (Sonoma) with Xcode 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+
+      - name: Build app
+        run: |
+          xcodebuild -scheme MacStatusBar \
+            -configuration Release \
+            -derivedDataPath build \
+            -destination 'generic/platform=macOS' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Prepare app for distribution
+        run: |
+          # Find the built app
+          APP_PATH=$(find build -name "MacStatusBar.app" -type d | head -1)
+          echo "Found app at: $APP_PATH"
+
+          # Copy to a clean location
+          mkdir -p dist
+          cp -R "$APP_PATH" dist/
+
+          # Remove code signature (if any) to avoid issues
+          codesign --remove-signature dist/MacStatusBar.app 2>/dev/null || true
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "MacStatusBar" \
+            --volicon "dist/MacStatusBar.app/Contents/Resources/AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "MacStatusBar.app" 150 185 \
+            --app-drop-link 450 185 \
+            --hide-extension "MacStatusBar.app" \
+            "MacStatusBar-${{ github.ref_name }}.dmg" \
+            "dist/" || true
+
+          # Fallback if create-dmg fails (e.g., no icon)
+          if [ ! -f "MacStatusBar-${{ github.ref_name }}.dmg" ]; then
+            hdiutil create -volname "MacStatusBar" -srcfolder dist -ov -format UDZO "MacStatusBar-${{ github.ref_name }}.dmg"
+          fi
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacStatusBar-DMG
+          path: "*.dmg"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "*.dmg"
+          body: |
+            ## MacStatusBar ${{ github.ref_name }}
+
+            ### Installation
+            1. Download the DMG file below
+            2. Open the DMG and drag MacStatusBar to Applications
+            3. **First launch**: Right-click the app → Open → Open (required for unsigned apps)
+
+            ### Requirements
+            - macOS 13.0 (Ventura) or later
+
+            ### What's New
+            See [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
