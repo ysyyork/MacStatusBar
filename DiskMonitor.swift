@@ -1,6 +1,10 @@
 import Foundation
 import Darwin
 
+// Required for proc_pid_rusage
+@_silgen_name("proc_pid_rusage")
+func proc_pid_rusage(_ pid: Int32, _ flavor: Int32, _ buffer: UnsafeMutablePointer<rusage_info_v4>) -> Int32
+
 // MARK: - Data Models
 
 struct DiskInfo: Identifiable {
@@ -364,8 +368,14 @@ final class DiskMonitor: ObservableObject {
     }
 
     private func getProcessIOStats(pid: Int32) -> (read: UInt64, write: UInt64)? {
-        // Disable per-process disk I/O tracking for now - requires complex pointer handling
-        // that can cause crashes. The system-wide disk I/O still works.
-        return nil
+        var rusageInfo = rusage_info_v4()
+        let result = proc_pid_rusage(pid, RUSAGE_INFO_V4, &rusageInfo)
+
+        guard result == 0 else {
+            return nil
+        }
+
+        // ri_diskio_bytesread and ri_diskio_byteswritten contain disk I/O
+        return (rusageInfo.ri_diskio_bytesread, rusageInfo.ri_diskio_byteswritten)
     }
 }

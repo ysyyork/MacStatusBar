@@ -114,7 +114,7 @@ struct CPUMenuContentView: View {
             // Processor Name Header
             SectionHeader(title: monitor.processorName.uppercased())
 
-            // GPU/Processor bars
+            // Memory/GPU/Swap bars
             VStack(spacing: 8) {
                 // Memory usage bar
                 HStack {
@@ -128,16 +128,30 @@ struct CPUMenuContentView: View {
                         .frame(width: 55, alignment: .trailing)
                 }
 
-                // Processor usage bar
+                // GPU usage bar
                 HStack {
-                    Text("Processor")
+                    Text("GPU")
                         .foregroundColor(.secondary)
                         .frame(width: 70, alignment: .leading)
-                    ProgressBarView(value: (monitor.userCPU + monitor.systemCPU) / 100, color: .blue)
-                    Text(String(format: "%.0f%%", monitor.userCPU + monitor.systemCPU))
+                    ProgressBarView(value: monitor.gpuUsage / 100, color: .green)
+                    Text(String(format: "%.0f%%", monitor.gpuUsage))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.secondary)
                         .frame(width: 55, alignment: .trailing)
+                }
+
+                // GPU Memory (only show if we have data)
+                if monitor.gpuMemoryBytes > 0 {
+                    HStack {
+                        Text("GPU Mem")
+                            .foregroundColor(.secondary)
+                            .frame(width: 70, alignment: .leading)
+                        Spacer()
+                        Text(formatMemory(monitor.gpuMemoryBytes))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(width: 55, alignment: .trailing)
+                    }
                 }
 
                 // Swap usage (only show if swap is being used)
