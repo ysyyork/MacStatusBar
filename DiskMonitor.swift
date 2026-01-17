@@ -40,6 +40,11 @@ final class DiskMonitor: ObservableObject {
     @Published var totalReadSpeed: Double = 0
     @Published var totalWriteSpeed: Double = 0
 
+    // Computed property for main disk usage (first/largest local disk)
+    var mainDiskUsage: Double {
+        disks.first?.usagePercentage ?? 0
+    }
+
     // MARK: - Private Properties
 
     private var timer: DispatchSourceTimer?
@@ -359,16 +364,8 @@ final class DiskMonitor: ObservableObject {
     }
 
     private func getProcessIOStats(pid: Int32) -> (read: UInt64, write: UInt64)? {
-        // Use rusage_info for I/O stats
-        var rusage = rusage_info_v4()
-
-        let rusageResult = withUnsafeMutablePointer(to: &rusage) { ptr -> Int32 in
-            let rawPtr = UnsafeMutableRawPointer(ptr).bindMemory(to: rusage_info_t.self, capacity: 1)
-            return proc_pid_rusage(pid, RUSAGE_INFO_V4, rawPtr)
-        }
-
-        guard rusageResult == 0 else { return nil }
-
-        return (rusage.ri_diskio_bytesread, rusage.ri_diskio_byteswritten)
+        // Disable per-process disk I/O tracking for now - requires complex pointer handling
+        // that can cause crashes. The system-wide disk I/O still works.
+        return nil
     }
 }

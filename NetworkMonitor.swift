@@ -8,6 +8,7 @@ struct ProcessNetworkUsage: Identifiable {
     let name: String
     let uploadSpeed: Double
     let downloadSpeed: Double
+    let pid: Int32
 }
 
 final class NetworkMonitor: ObservableObject {
@@ -33,7 +34,7 @@ final class NetworkMonitor: ObservableObject {
     private var processTimer: DispatchSourceTimer?
 
     // For tracking per-process deltas
-    private var previousProcessBytes: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
+    private var previousProcessBytes: [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] = [:]
 
     init() {
         startMonitoring()
@@ -66,7 +67,7 @@ final class NetworkMonitor: ObservableObject {
         var processUsages: [ProcessNetworkUsage] = []
 
         for (name, bytes) in processBytes {
-            let prev = previousProcessBytes[name] ?? (0, 0)
+            let prev = previousProcessBytes[name] ?? (0, 0, 0)
             let downloadDelta = bytes.bytesIn >= prev.bytesIn ? bytes.bytesIn - prev.bytesIn : 0
             let uploadDelta = bytes.bytesOut >= prev.bytesOut ? bytes.bytesOut - prev.bytesOut : 0
 
@@ -79,7 +80,8 @@ final class NetworkMonitor: ObservableObject {
                 processUsages.append(ProcessNetworkUsage(
                     name: name,
                     uploadSpeed: uploadSpeed,
-                    downloadSpeed: downloadSpeed
+                    downloadSpeed: downloadSpeed,
+                    pid: bytes.pid
                 ))
             }
         }
@@ -96,8 +98,8 @@ final class NetworkMonitor: ObservableObject {
         }
     }
 
-    private func getProcessNetworkBytes() -> [String: (bytesIn: UInt64, bytesOut: UInt64)] {
-        var result: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
+    private func getProcessNetworkBytes() -> [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] {
+        var result: [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] = [:]
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
@@ -122,8 +124,8 @@ final class NetworkMonitor: ObservableObject {
         return result
     }
 
-    private func parseNettopOutput(_ output: String) -> [String: (bytesIn: UInt64, bytesOut: UInt64)] {
-        var result: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
+    private func parseNettopOutput(_ output: String) -> [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] {
+        var result: [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] = [:]
         let lines = output.components(separatedBy: "\n")
 
         for line in lines {
@@ -134,10 +136,13 @@ final class NetworkMonitor: ObservableObject {
             if components.count >= 3 {
                 // Format: process_name.pid, bytes_in, bytes_out
                 let processInfo = components[0].trimmingCharacters(in: .whitespaces)
-                // Extract process name (remove .pid suffix)
+                // Extract process name and PID (remove .pid suffix)
                 var processName = processInfo
+                var pid: Int32 = 0
                 if let dotRange = processInfo.range(of: ".", options: .backwards) {
                     processName = String(processInfo[..<dotRange.lowerBound])
+                    let pidStr = String(processInfo[dotRange.upperBound...])
+                    pid = Int32(pidStr) ?? 0
                 }
 
                 // Skip system processes we don't care about
@@ -146,11 +151,11 @@ final class NetworkMonitor: ObservableObject {
                 let bytesIn = UInt64(components[1].trimmingCharacters(in: .whitespaces)) ?? 0
                 let bytesOut = UInt64(components[2].trimmingCharacters(in: .whitespaces)) ?? 0
 
-                // Aggregate by process name
+                // Aggregate by process name (keep first PID we see)
                 if let existing = result[processName] {
-                    result[processName] = (existing.bytesIn + bytesIn, existing.bytesOut + bytesOut)
+                    result[processName] = (existing.bytesIn + bytesIn, existing.bytesOut + bytesOut, existing.pid)
                 } else {
-                    result[processName] = (bytesIn, bytesOut)
+                    result[processName] = (bytesIn, bytesOut, pid)
                 }
             }
         }

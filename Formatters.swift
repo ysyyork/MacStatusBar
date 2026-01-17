@@ -65,6 +65,25 @@ struct ByteFormatter {
             return String(format: "%.1f %@", value, units[unitIndex])
         }
     }
+
+    /// Ultra-compact speed format for menu bar (e.g., "13 KB/s" or "0 KB/s")
+    static func menuBarSpeed(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond < 0 {
+            return "0 KB/s"
+        }
+
+        let units = ["B/s", "KB/s", "MB/s", "GB/s"]
+        var value = bytesPerSecond
+        var unitIndex = 0
+
+        while value >= 1000 && unitIndex < units.count - 1 {
+            value /= 1000
+            unitIndex += 1
+        }
+
+        // Always show as integer for cleaner look in menu bar
+        return String(format: "%.0f %@", value, units[unitIndex])
+    }
 }
 
 // MARK: - CPU/System Formatter

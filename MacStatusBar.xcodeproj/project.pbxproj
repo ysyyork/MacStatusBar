@@ -16,7 +16,18 @@
 		B2000001234567890007 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890008 /* SharedViews.swift */; };
 		B2000001234567890008 /* DiskMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890009 /* DiskMonitor.swift */; };
 		B2000001234567890009 /* DiskContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000223456789000A /* DiskContentView.swift */; };
+		B2000001234567890100 /* MacStatusBarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890100 /* MacStatusBarTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B2000010234567890001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B2000009234567890001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B2000006234567890001;
+			remoteInfo = MacStatusBar;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		B2000002234567890001 /* MacStatusBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStatusBarApp.swift; sourceTree = "<group>"; };
@@ -29,11 +40,20 @@
 		B2000002234567890008 /* SharedViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedViews.swift; sourceTree = "<group>"; };
 		B2000002234567890009 /* DiskMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskMonitor.swift; sourceTree = "<group>"; };
 		B200000223456789000A /* DiskContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskContentView.swift; sourceTree = "<group>"; };
+		B2000002234567890100 /* MacStatusBarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStatusBarTests.swift; sourceTree = "<group>"; };
 		B2000003234567890001 /* MacStatusBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacStatusBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B2000003234567890100 /* MacStatusBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacStatusBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		B2000004234567890001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B2000004234567890100 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -47,6 +67,7 @@
 			isa = PBXGroup;
 			children = (
 				B2000005234567890002 /* MacStatusBar */,
+				B2000005234567890100 /* MacStatusBarTests */,
 				B2000005234567890003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -72,8 +93,17 @@
 			isa = PBXGroup;
 			children = (
 				B2000003234567890001 /* MacStatusBar.app */,
+				B2000003234567890100 /* MacStatusBarTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B2000005234567890100 /* MacStatusBarTests */ = {
+			isa = PBXGroup;
+			children = (
+				B2000002234567890100 /* MacStatusBarTests.swift */,
+			);
+			path = MacStatusBarTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -95,6 +125,23 @@
 			productReference = B2000003234567890001 /* MacStatusBar.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B2000006234567890100 /* MacStatusBarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B2000007234567890100 /* Build configuration list for PBXNativeTarget "MacStatusBarTests" */;
+			buildPhases = (
+				B2000008234567890100 /* Sources */,
+				B2000004234567890100 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B2000011234567890001 /* PBXTargetDependency */,
+			);
+			name = MacStatusBarTests;
+			productName = MacStatusBarTests;
+			productReference = B2000003234567890100 /* MacStatusBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -107,6 +154,10 @@
 				TargetAttributes = {
 					B2000006234567890001 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					B2000006234567890100 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = B2000006234567890001;
 					};
 				};
 			};
@@ -124,6 +175,7 @@
 			projectRoot = "";
 			targets = (
 				B2000006234567890001 /* MacStatusBar */,
+				B2000006234567890100 /* MacStatusBarTests */,
 			);
 		};
 /* End PBXProject section */
@@ -145,7 +197,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B2000008234567890100 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B2000001234567890100 /* MacStatusBarTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B2000011234567890001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B2000006234567890001 /* MacStatusBar */;
+			targetProxy = B2000010234567890001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B200000A234567890001 /* Debug */ = {
@@ -318,6 +386,40 @@
 			};
 			name = Release;
 		};
+		B200000B234567890100 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.macstatusbar.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MacStatusBar.app/Contents/MacOS/MacStatusBar";
+			};
+			name = Debug;
+		};
+		B200000B234567890101 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.macstatusbar.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MacStatusBar.app/Contents/MacOS/MacStatusBar";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -335,6 +437,15 @@
 			buildConfigurations = (
 				B200000B234567890001 /* Debug */,
 				B200000B234567890002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B2000007234567890100 /* Build configuration list for PBXNativeTarget "MacStatusBarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B200000B234567890100 /* Debug */,
+				B200000B234567890101 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

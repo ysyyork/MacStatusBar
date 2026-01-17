@@ -1,7 +1,71 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Shared UI Components
 // These components are reusable across multiple views in the app
+
+// MARK: - Process Icon View
+
+struct ProcessIconView: View {
+    let pid: Int32
+    let processName: String
+    let size: CGFloat
+
+    var body: some View {
+        if let icon = getAppIcon() {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+        } else {
+            Image(systemName: "app.fill")
+                .font(.system(size: size * 0.8))
+                .foregroundColor(.secondary)
+                .frame(width: size, height: size)
+        }
+    }
+
+    private func getAppIcon() -> NSImage? {
+        // Try to get icon from running application by PID
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            if let icon = app.icon {
+                return icon
+            }
+        }
+
+        // Try to find app by name in /Applications
+        let appPaths = [
+            "/Applications/\(processName).app",
+            "/Applications/\(processName.capitalized).app",
+            "/System/Applications/\(processName).app",
+            "/System/Applications/Utilities/\(processName).app"
+        ]
+
+        for path in appPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return NSWorkspace.shared.icon(forFile: path)
+            }
+        }
+
+        // Try to find via bundle identifier patterns
+        let workspace = NSWorkspace.shared
+        let runningApps = workspace.runningApplications
+
+        // Match by localized name or bundle name
+        for app in runningApps {
+            if let localizedName = app.localizedName,
+               localizedName.lowercased().contains(processName.lowercased()) {
+                return app.icon
+            }
+            if let bundleName = app.bundleIdentifier?.components(separatedBy: ".").last,
+               bundleName.lowercased().contains(processName.lowercased()) {
+                return app.icon
+            }
+        }
+
+        return nil
+    }
+}
 
 // MARK: - Section Header
 

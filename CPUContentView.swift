@@ -82,10 +82,8 @@ struct CPUMenuContentView: View {
             VStack(spacing: 4) {
                 ForEach(monitor.topProcesses) { process in
                     HStack {
-                        // Process icon placeholder
-                        Image(systemName: "app.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                        // Process icon
+                        ProcessIconView(pid: process.pid, processName: process.name, size: 14)
                         Text(process.name)
                             .lineLimit(1)
                             .truncationMode(.tail)

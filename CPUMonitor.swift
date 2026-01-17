@@ -28,6 +28,8 @@ final class CPUMonitor: ObservableObject {
     @Published var uptime: TimeInterval = 0
     @Published var gpuUsage: Double = 0
     @Published var gpuMemoryUsage: Double = 0
+    @Published var gpuMemoryBytes: UInt64 = 0
+    @Published var gpuName: String = "GPU"
     @Published var processorName: String = "—"
     @Published var fps: Double = 0
     @Published var memoryUsed: UInt64 = 0
@@ -140,7 +142,7 @@ final class CPUMonitor: ObservableObject {
         let temp = getCPUTemperature()
         let load = getLoadAverage()
         let uptimeVal = getUptime()
-        let (gpu, gpuMem) = getGPUUsage()
+        let gpuStats = getGPUUsage()
         let memInfo = getMemoryInfo()
         let swapInfo = getSwapInfo()
 
@@ -152,8 +154,10 @@ final class CPUMonitor: ObservableObject {
             self.cpuTemperature = temp
             self.loadAverage = load
             self.uptime = uptimeVal
-            self.gpuUsage = gpu
-            self.gpuMemoryUsage = gpuMem
+            self.gpuUsage = gpuStats.usage
+            self.gpuMemoryUsage = gpuStats.memoryPercent
+            self.gpuMemoryBytes = gpuStats.memoryBytes
+            self.gpuName = gpuStats.name
             self.memoryUsed = memInfo.used
             self.memoryTotal = memInfo.total
             self.swapUsed = swapInfo.used
@@ -263,17 +267,17 @@ final class CPUMonitor: ObservableObject {
 
     // MARK: - GPU Usage
 
-    private func getGPUUsage() -> (usage: Double, memory: Double) {
+    private func getGPUUsage() -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, name: String) {
         // For Apple Silicon, GPU is integrated and stats require elevated permissions
         // We'll use a simplified approach based on process GPU usage
         return getGPUUsageViaIOKit()
     }
 
-    private func getGPUUsageViaIOKit() -> (usage: Double, memory: Double) {
+    private func getGPUUsageViaIOKit() -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, name: String) {
         // Try to get GPU stats from ioreg
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
-        task.arguments = ["-r", "-c", "IOAccelerator", "-d", "1"]
+        task.arguments = ["-r", "-c", "IOAccelerator"]
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -286,6 +290,17 @@ final class CPUMonitor: ObservableObject {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8) {
                 var gpuUsage: Double = 0
+                var gpuMemoryUsed: UInt64 = 0
+                var gpuMemoryTotal: UInt64 = 0
+                var gpuName = "GPU"
+
+                // Try to get GPU name from IOName
+                if let range = output.range(of: "\"IOName\" = \"") {
+                    let startIndex = range.upperBound
+                    if let endIndex = output[startIndex...].firstIndex(of: "\"") {
+                        gpuName = String(output[startIndex..<endIndex])
+                    }
+                }
 
                 // Parse Device Utilization %
                 if let range = output.range(of: "\"Device Utilization %\" = ") {
@@ -297,13 +312,70 @@ final class CPUMonitor: ObservableObject {
                     }
                 }
 
-                return (gpuUsage, 0)
+                // Parse VRAM used (in bytes) - for discrete GPUs
+                if let range = output.range(of: "\"VRAM,totalMB\" = ") {
+                    let startIndex = range.upperBound
+                    let endIndex = output[startIndex...].firstIndex(of: "\n") ?? output.endIndex
+                    let valueStr = String(output[startIndex..<endIndex]).trimmingCharacters(in: .whitespaces)
+                    if let value = UInt64(valueStr) {
+                        gpuMemoryTotal = value * 1024 * 1024
+                    }
+                }
+
+                if let range = output.range(of: "\"VRAM,freeMB\" = ") {
+                    let startIndex = range.upperBound
+                    let endIndex = output[startIndex...].firstIndex(of: "\n") ?? output.endIndex
+                    let valueStr = String(output[startIndex..<endIndex]).trimmingCharacters(in: .whitespaces)
+                    if let value = UInt64(valueStr) {
+                        let freeMemory = value * 1024 * 1024
+                        if gpuMemoryTotal > freeMemory {
+                            gpuMemoryUsed = gpuMemoryTotal - freeMemory
+                        }
+                    }
+                }
+
+                // For Apple Silicon - check for "Alloc system memory" or similar
+                if let range = output.range(of: "\"PerformanceStatistics\" =") {
+                    let perfStart = range.upperBound
+                    // Find the closing brace of PerformanceStatistics
+                    if let closeRange = output[perfStart...].range(of: "}") {
+                        let perfSection = String(output[perfStart..<closeRange.lowerBound])
+
+                        // Look for allocated memory in bytes
+                        if let memRange = perfSection.range(of: "\"Alloc system memory\" = ") {
+                            let memStart = memRange.upperBound
+                            let memEnd = perfSection[memStart...].firstIndex(where: { !$0.isNumber }) ?? perfSection.endIndex
+                            let memStr = String(perfSection[memStart..<memEnd])
+                            if let memValue = UInt64(memStr) {
+                                gpuMemoryUsed = memValue
+                            }
+                        }
+
+                        // Alternative: In use system memory
+                        if gpuMemoryUsed == 0, let memRange = perfSection.range(of: "\"In use system memory\" = ") {
+                            let memStart = memRange.upperBound
+                            let memEnd = perfSection[memStart...].firstIndex(where: { !$0.isNumber }) ?? perfSection.endIndex
+                            let memStr = String(perfSection[memStart..<memEnd])
+                            if let memValue = UInt64(memStr) {
+                                gpuMemoryUsed = memValue
+                            }
+                        }
+                    }
+                }
+
+                // Calculate memory percentage (for Apple Silicon, use portion of total RAM)
+                var memPercent: Double = 0
+                if gpuMemoryTotal > 0 {
+                    memPercent = Double(gpuMemoryUsed) / Double(gpuMemoryTotal) * 100
+                }
+
+                return (gpuUsage, memPercent, gpuMemoryUsed, gpuName)
             }
         } catch {
             // Silently fail
         }
 
-        return (0, 0)
+        return (0, 0, 0, "GPU")
     }
 
     // MARK: - Process Stats

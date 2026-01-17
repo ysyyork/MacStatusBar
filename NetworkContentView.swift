@@ -137,6 +137,7 @@ struct NetworkMenuContentView: View {
 
                     ForEach(monitor.topProcesses) { process in
                         HStack {
+                            ProcessIconView(pid: process.pid, processName: process.name, size: 14)
                             Text(process.name)
                                 .lineLimit(1)
                                 .truncationMode(.tail)

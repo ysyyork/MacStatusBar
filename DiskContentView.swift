@@ -68,9 +68,7 @@ struct DiskMenuContentView: View {
                     ForEach(monitor.topProcesses) { process in
                         HStack {
                             // Process icon
-                            Image(systemName: "app.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
+                            ProcessIconView(pid: process.pid, processName: process.name, size: 14)
                             Text(process.name)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -236,6 +234,59 @@ struct DiskUsageBar: View {
 // MARK: - Menu Bar Disk View
 
 struct DiskMenuBarView: View {
+    let diskUsage: Double  // 0.0 to 1.0
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "internaldrive.fill")
+                .font(.system(size: 11))
+            Text(String(format: "%.0f%%", diskUsage * 100))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+        }
+        .foregroundColor(.primary)  // Adapts to light/dark menu bar
+    }
+}
+
+// MARK: - Disk Usage Icon (for dropdown content)
+
+struct DiskUsageIcon: View {
+    let usage: Double  // 0.0 to 1.0
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            let cornerRadius: CGFloat = 2
+            let borderWidth: CGFloat = 1.5
+            let fillPadding: CGFloat = 2
+
+            ZStack(alignment: .leading) {
+                // Outer border (disk shape)
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(Color.primary, lineWidth: borderWidth)
+
+                // Fill level
+                RoundedRectangle(cornerRadius: cornerRadius - 1)
+                    .fill(fillColor)
+                    .frame(width: max(0, (width - fillPadding * 2) * min(1, usage)))
+                    .padding(fillPadding)
+            }
+        }
+    }
+
+    private var fillColor: Color {
+        if usage > 0.9 {
+            return .red
+        } else if usage > 0.75 {
+            return .orange
+        } else {
+            return .blue
+        }
+    }
+}
+
+// Keep the old signature for compatibility but unused
+struct DiskMenuBarViewLegacy: View {
     let readSpeed: Double
     let writeSpeed: Double
 
