@@ -180,12 +180,46 @@ struct CPUMenuBarView: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "cpu")
-                .font(.system(size: 11))
-            Text(String(format: "%.0f%%", cpuUsage))
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+        Image(nsImage: createCPUImage())
+    }
+
+    private func createCPUImage() -> NSImage {
+        let text = String(format: "%.0f%%", cpuUsage)
+        let width: CGFloat = 55
+        let height: CGFloat = 16
+
+        let image = NSImage(size: NSSize(width: width, height: height))
+        image.lockFocus()
+
+        // Draw CPU icon using SF Symbol
+        let iconAttachment = NSTextAttachment()
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        if let iconImage = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil)?.withSymbolConfiguration(iconConfig) {
+            iconAttachment.image = iconImage
         }
-        .foregroundColor(isHighUsage ? .red : .primary)
+
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+        let textColor = isHighUsage ? NSColor.red : NSColor.black
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor
+        ]
+
+        // Draw icon
+        if let iconImage = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil) {
+            let iconRect = NSRect(x: 0, y: 2, width: 12, height: 12)
+            iconImage.draw(in: iconRect)
+        }
+
+        // Draw text
+        let textString = NSAttributedString(string: text, attributes: attrs)
+        textString.draw(at: NSPoint(x: 15, y: 1))
+
+        image.unlockFocus()
+
+        // Only use template mode when not showing warning color
+        image.isTemplate = !isHighUsage
+        return image
     }
 }
