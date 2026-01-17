@@ -31,10 +31,17 @@ An open-source system monitoring status bar app for macOS users.
 
 ## Screenshots
 
-Three separate menu bar icons for Network, CPU, and Disk monitoring:
-- **Network**: `↑ 1.2 KB/s  ↓ 3.4 KB/s`
-- **CPU**: (cpu icon) `21%`
-- **Disk**: (drive icon)
+### Status Bar
+![Status Bar](docs/status_bar.png)
+
+### Network Monitor
+![Network Monitor](docs/network_status.png)
+
+### CPU Monitor
+![CPU Monitor](docs/compute_status.png)
+
+### Disk Monitor
+![Disk Monitor](docs/disk_status.png)
 
 ## Requirements
 
