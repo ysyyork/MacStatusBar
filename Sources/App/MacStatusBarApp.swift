@@ -221,7 +221,8 @@ struct CPUMenuBarView: View {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 
-        let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+        // Use slightly larger sizes to match SwiftUI rendering
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
         let textColor = NSColor.red
 
         let attrs: [NSAttributedString.Key: Any] = [
@@ -231,7 +232,7 @@ struct CPUMenuBarView: View {
 
         // Draw icon with red tint
         if let iconImage = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
             if let configuredIcon = iconImage.withSymbolConfiguration(config) {
                 let tintedIcon = configuredIcon.copy() as! NSImage
                 tintedIcon.lockFocus()
@@ -239,13 +240,13 @@ struct CPUMenuBarView: View {
                 let iconRect = NSRect(origin: .zero, size: tintedIcon.size)
                 iconRect.fill(using: .sourceAtop)
                 tintedIcon.unlockFocus()
-                tintedIcon.draw(in: NSRect(x: 0, y: 3, width: 13, height: 13))
+                tintedIcon.draw(in: NSRect(x: 0, y: 2, width: 14, height: 14))
             }
         }
 
         // Draw text
         let textString = NSAttributedString(string: text, attributes: attrs)
-        textString.draw(at: NSPoint(x: 16, y: 2))
+        textString.draw(at: NSPoint(x: 17, y: 1))
 
         NSGraphicsContext.restoreGraphicsState()
 
