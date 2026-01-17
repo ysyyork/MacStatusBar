@@ -2,7 +2,7 @@
 
 An open-source system monitoring status bar app for macOS users.
 
-![macOS](https://img.shields.io/badge/macOS-13.0+-blue)
+![macOS](https://img.shields.io/badge/macOS-14.0+-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0+-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -38,7 +38,7 @@ Three separate menu bar icons for Network, CPU, and Disk monitoring:
 
 ## Requirements
 
-- macOS 13.0 or later
+- macOS 14.0 (Sonoma) or later
 - Xcode 15.0 or later (for building)
 
 ## Installation

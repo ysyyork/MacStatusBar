@@ -79,7 +79,7 @@ struct MacStatusBarApp: App {
         }
 
         // Network Monitor Menu Bar Extra
-        MenuBarExtra(isInserted: $settings.showNetworkMonitor) {
+        MenuBarExtra {
             NetworkMenuContentView(monitor: networkMonitor, settings: settings)
         } label: {
             NetworkMenuBarView(
@@ -91,7 +91,7 @@ struct MacStatusBarApp: App {
         .menuBarExtraStyle(.window)
 
         // CPU/GPU Monitor Menu Bar Extra
-        MenuBarExtra(isInserted: $settings.showCPUMonitor) {
+        MenuBarExtra {
             CPUMenuContentView(monitor: cpuMonitor, settings: settings)
         } label: {
             CPUMenuBarView(
@@ -101,7 +101,7 @@ struct MacStatusBarApp: App {
         .menuBarExtraStyle(.window)
 
         // Disk Monitor Menu Bar Extra
-        MenuBarExtra(isInserted: $settings.showDiskMonitor) {
+        MenuBarExtra {
             DiskMenuContentView(monitor: diskMonitor, settings: settings)
         } label: {
             DiskMenuBarView(diskUsage: diskMonitor.mainDiskUsage)

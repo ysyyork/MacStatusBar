@@ -178,10 +178,8 @@ struct LegendItem: View {
 struct MenuFooterButtons: View {
     var body: some View {
         VStack(spacing: 0) {
-            // Settings Button
-            Button(action: {
-                openSettings()
-            }) {
+            // Settings Button using SettingsLink
+            SettingsLink {
                 HStack {
                     Text("Settings...")
                         .foregroundColor(.primary)
@@ -195,7 +193,6 @@ struct MenuFooterButtons: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .keyboardShortcut(",", modifiers: .command)
 
             Divider()
                 .padding(.horizontal, 12)
@@ -218,15 +215,6 @@ struct MenuFooterButtons: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut("q")
-        }
-    }
-
-    private func openSettings() {
-        // Open the Settings window
-        if #available(macOS 14.0, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
         }
     }
 }
