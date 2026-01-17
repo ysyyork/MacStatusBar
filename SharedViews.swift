@@ -176,13 +176,13 @@ struct LegendItem: View {
 // MARK: - Menu Footer Buttons (Settings + Quit)
 
 struct MenuFooterButtons: View {
-    @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(spacing: 0) {
             // Settings Button
             Button(action: {
-                openSettings()
+                openSettingsWindow()
             }) {
                 HStack {
                     Text("Settings...")
@@ -223,19 +223,16 @@ struct MenuFooterButtons: View {
         }
     }
 
-    private func openSettings() {
-        // Close the menu first
-        NSApp.keyWindow?.close()
-
-        // Open Settings window after a brief delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if #available(macOS 14.0, *) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            } else {
-                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-            }
-            // Bring app to front to show Settings
-            NSApp.activate(ignoringOtherApps: true)
+    private func openSettingsWindow() {
+        // Close the menu panel first
+        if let panel = NSApp.keyWindow as? NSPanel {
+            panel.close()
         }
+
+        // Use the SwiftUI openSettings environment action
+        openSettings()
+
+        // Bring app to front
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
