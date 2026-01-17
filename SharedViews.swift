@@ -176,14 +176,10 @@ struct LegendItem: View {
 // MARK: - Menu Footer Buttons (Settings + Quit)
 
 struct MenuFooterButtons: View {
-    @Environment(\.openSettings) private var openSettings
-
     var body: some View {
         VStack(spacing: 0) {
-            // Settings Button
-            Button(action: {
-                openSettingsWindow()
-            }) {
+            // Settings Button using SettingsLink
+            SettingsLink {
                 HStack {
                     Text("Settings...")
                         .foregroundColor(.primary)
@@ -221,18 +217,5 @@ struct MenuFooterButtons: View {
             .buttonStyle(.plain)
             .keyboardShortcut("q")
         }
-    }
-
-    private func openSettingsWindow() {
-        // Close the menu panel first
-        if let panel = NSApp.keyWindow as? NSPanel {
-            panel.close()
-        }
-
-        // Use the SwiftUI openSettings environment action
-        openSettings()
-
-        // Bring app to front
-        NSApp.activate(ignoringOtherApps: true)
     }
 }
