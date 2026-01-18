@@ -608,22 +608,34 @@ final class AdditionalFormatterTests: XCTestCase {
         XCTAssertTrue(result.contains("2.0 TB"))
     }
 
-    // MARK: - menuBarSpeed Tests
+    // MARK: - menuBarSpeed Tests (Fixed-width format with 3-char number padding)
 
     func testMenuBarSpeedZero() {
-        XCTAssertEqual(ByteFormatter.menuBarSpeed(0), "0 B/s")
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(0), "  0 B/s")
     }
 
     func testMenuBarSpeedKilobytes() {
-        XCTAssertEqual(ByteFormatter.menuBarSpeed(13_000), "13 KB/s")
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(13_000), " 13 KB/s")
     }
 
     func testMenuBarSpeedMegabytes() {
-        XCTAssertEqual(ByteFormatter.menuBarSpeed(5_500_000), "6 MB/s")  // Rounds to integer
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(5_500_000), "  6 MB/s")  // Rounds to integer
     }
 
     func testMenuBarSpeedNegative() {
-        XCTAssertEqual(ByteFormatter.menuBarSpeed(-100), "0 KB/s")
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(-100), "  0 KB/s")
+    }
+
+    func testMenuBarSpeedFixedWidth() {
+        // All outputs should have consistent width (number padded to 3 chars)
+        let speed1 = ByteFormatter.menuBarSpeed(5_000)      // "  5 KB/s"
+        let speed2 = ByteFormatter.menuBarSpeed(50_000)     // " 50 KB/s"
+        let speed3 = ByteFormatter.menuBarSpeed(500_000)    // "500 KB/s"
+
+        // Extract just the number portion (first 3 chars) to verify padding
+        XCTAssertEqual(String(speed1.prefix(3)), "  5")
+        XCTAssertEqual(String(speed2.prefix(3)), " 50")
+        XCTAssertEqual(String(speed3.prefix(3)), "500")
     }
 }
 
