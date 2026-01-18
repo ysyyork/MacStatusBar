@@ -38,6 +38,7 @@ final class CPUMonitor: ObservableObject {
     @Published var memoryTotal: UInt64 = 0
     @Published var swapUsed: UInt64 = 0
     @Published var swapTotal: UInt64 = 0
+    @Published var fanSpeeds: [(name: String, rpm: Int)] = []
 
     // MARK: - Private Properties
 
@@ -199,6 +200,7 @@ final class CPUMonitor: ObservableObject {
         let gpuStats = getGPUUsage()
         let memInfo = getMemoryInfo()
         let swapInfo = getSwapInfo()
+        let fans = getFanSpeeds()
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -217,6 +219,7 @@ final class CPUMonitor: ObservableObject {
             self.memoryTotal = memInfo.total
             self.swapUsed = swapInfo.used
             self.swapTotal = swapInfo.total
+            self.fanSpeeds = fans
 
             // Update CPU history (total usage = user + system)
             let totalCPU = cpuUsage.user + cpuUsage.system
@@ -612,5 +615,124 @@ final class CPUMonitor: ObservableObject {
         let used = min(swapUsage.xsu_used, swapUsage.xsu_total)
 
         return (used, swapUsage.xsu_total)
+    }
+
+    // MARK: - Fan Speed
+
+    private func getFanSpeeds() -> [(name: String, rpm: Int)] {
+        var fans: [(name: String, rpm: Int)] = []
+
+        // Try to get fan info via ioreg (AppleSMC or AppleFanControl)
+        let result = ProcessRunner.run(
+            executable: "/usr/sbin/ioreg",
+            arguments: ["-r", "-c", "AppleSMCKeyStore", "-d", "1"],
+            timeout: 5.0
+        )
+
+        switch result {
+        case .success(let output):
+            // Parse fan data from SMC output
+            // Look for fan speed keys like "F0Ac" (Fan 0 Actual speed)
+            fans = parseFanSpeedsFromSMC(output)
+
+            // If no fans found via SMC, try AppleARMFan (Apple Silicon)
+            if fans.isEmpty {
+                fans = getFanSpeedsAppleSilicon()
+            }
+        case .failure:
+            // Try Apple Silicon method directly
+            fans = getFanSpeedsAppleSilicon()
+        }
+
+        return fans
+    }
+
+    private func parseFanSpeedsFromSMC(_ output: String) -> [(name: String, rpm: Int)] {
+        var fans: [(name: String, rpm: Int)] = []
+
+        // Look for fan-related entries in the SMC data
+        // Format varies but typically includes "F0Ac", "F1Ac" for actual fan speeds
+        let lines = output.components(separatedBy: "\n")
+
+        for line in lines {
+            // Look for fan speed indicators
+            if line.contains("Fan") && line.contains("Speed") {
+                // Try to extract RPM value
+                if let rpmRange = line.range(of: #"\d{3,5}"#, options: .regularExpression) {
+                    let rpmStr = String(line[rpmRange])
+                    if let rpm = Int(rpmStr), rpm > 0 && rpm < 10000 {
+                        let fanIndex = fans.count
+                        fans.append((name: "Fan \(fanIndex + 1)", rpm: rpm))
+                    }
+                }
+            }
+        }
+
+        return fans
+    }
+
+    private func getFanSpeedsAppleSilicon() -> [(name: String, rpm: Int)] {
+        var fans: [(name: String, rpm: Int)] = []
+
+        // On Apple Silicon, try to get fan info via different IOKit class
+        let result = ProcessRunner.run(
+            executable: "/usr/sbin/ioreg",
+            arguments: ["-r", "-c", "AppleARMIODevice", "-n", "fan0"],
+            timeout: 5.0
+        )
+
+        switch result {
+        case .success(let output):
+            if let rpm = extractFanRPM(from: output, fanName: "Fan") {
+                fans.append((name: "Fan", rpm: rpm))
+            }
+        case .failure:
+            // Try alternative: powermetrics sampling (if available without sudo)
+            // This typically requires elevated privileges, so we'll skip it
+            break
+        }
+
+        // If still no data, check for "accel" or thermal sensor output
+        if fans.isEmpty {
+            let thermalResult = ProcessRunner.run(
+                executable: "/usr/sbin/ioreg",
+                arguments: ["-r", "-n", "AppleARMPM"],
+                timeout: 5.0
+            )
+
+            if case .success(let output) = thermalResult {
+                // Look for fan-related properties
+                if output.contains("fan") || output.contains("Fan") {
+                    if let rpm = extractFanRPM(from: output, fanName: "System Fan") {
+                        fans.append((name: "System Fan", rpm: rpm))
+                    }
+                }
+            }
+        }
+
+        return fans
+    }
+
+    private func extractFanRPM(from output: String, fanName: String) -> Int? {
+        // Look for patterns like "current-speed" = 1234 or "rpm" = 1234
+        let patterns = [
+            #""current-speed"\s*=\s*(\d+)"#,
+            #""target-speed"\s*=\s*(\d+)"#,
+            #""rpm"\s*=\s*(\d+)"#,
+            #""speed"\s*=\s*(\d+)"#
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: output, options: [], range: NSRange(output.startIndex..., in: output)),
+               let rpmRange = Range(match.range(at: 1), in: output) {
+                let rpmStr = String(output[rpmRange])
+                if let rpm = Int(rpmStr), rpm > 0 && rpm < 10000 {
+                    return rpm
+                }
+            }
+        }
+
+        return nil
     }
 }

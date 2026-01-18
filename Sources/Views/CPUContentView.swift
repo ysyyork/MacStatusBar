@@ -72,6 +72,23 @@ struct CPUMenuContentView: View {
                 .padding(.vertical, 4)
             }
 
+            // Fan Speeds
+            if !monitor.fanSpeeds.isEmpty {
+                ForEach(Array(monitor.fanSpeeds.enumerated()), id: \.offset) { _, fan in
+                    HStack {
+                        Text(fan.name)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(fan.rpm) RPM")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 2)
+                }
+            }
+
             Divider()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
