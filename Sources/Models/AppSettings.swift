@@ -79,6 +79,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(cpuProcessCount, forKey: "cpuProcessCount") }
     }
 
+    @Published var memoryProcessCount: Int {
+        didSet { defaults.set(memoryProcessCount, forKey: "memoryProcessCount") }
+    }
+
     // MARK: - Warning Thresholds
 
     @Published var cpuWarningThreshold: Double {
@@ -129,6 +133,7 @@ final class AppSettings: ObservableObject {
         self.cpuShowLoadAverage = defaults.object(forKey: "cpuShowLoadAverage") as? Bool ?? true
         self.cpuShowUptime = defaults.object(forKey: "cpuShowUptime") as? Bool ?? true
         self.cpuProcessCount = defaults.object(forKey: "cpuProcessCount") as? Int ?? 5
+        self.memoryProcessCount = defaults.object(forKey: "memoryProcessCount") as? Int ?? 5
 
         self.cpuWarningThreshold = defaults.object(forKey: "cpuWarningThreshold") as? Double ?? 90.0
         self.memoryWarningThreshold = defaults.object(forKey: "memoryWarningThreshold") as? Double ?? 90.0

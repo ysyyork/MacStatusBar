@@ -21,7 +21,10 @@ MacStatusBar is a macOS menu bar app for system monitoring (CPU, GPU, Memory, Ne
 
 4. **Verify build passes** before committing
 
-5. **Update README.md** if the feature is user-facing
+5. **Update README.md** for user-facing features:
+   - Add to Features section
+   - Update screenshots if UI changed
+   - Document any new settings or configuration
 
 ### Testing Requirements
 - All new features MUST have corresponding tests

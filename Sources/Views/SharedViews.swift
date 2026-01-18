@@ -178,8 +178,17 @@ struct LegendItem: View {
 struct MenuFooterButtons: View {
     var body: some View {
         VStack(spacing: 0) {
-            // Settings Button using SettingsLink
-            SettingsLink {
+            // Settings Button - using custom action to ensure window activates properly
+            Button(action: {
+                // Activate the app first, then open settings
+                NSApp.activate(ignoringOtherApps: true)
+                // Use selector to open settings window (works with SwiftUI Settings scene)
+                if #available(macOS 14.0, *) {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } else {
+                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                }
+            }) {
                 HStack {
                     Text("Settings...")
                         .foregroundColor(.primary)

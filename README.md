@@ -21,6 +21,7 @@ An open-source system monitoring status bar app for macOS users.
 - Memory and swap usage
 - Load average with history graph
 - Top processes by CPU usage
+- Top processes by memory usage
 - System uptime
 
 ### Disk Monitor
