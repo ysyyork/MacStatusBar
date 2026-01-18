@@ -45,6 +45,17 @@ MacStatusBar is a macOS menu bar app for system monitoring (CPU, GPU, Memory, Ne
 - Handle counter wraparound for cumulative metrics
 - Clean up timers properly in `deinit`
 
+### Settings Button (IMPORTANT)
+The Settings button in `MenuFooterButtons` MUST use `@Environment(\.openSettings)`:
+```swift
+@Environment(\.openSettings) private var openSettings
+Button(action: {
+    NSApp.activate(ignoringOtherApps: true)
+    openSettings()
+}) { ... }
+```
+DO NOT use `NSApp.sendAction` with `showSettingsWindow:` or `showPreferencesWindow:` selectors - this causes runtime errors. The `activate()` call ensures the window comes to front on repeated clicks.
+
 ## File Structure
 ```
 Sources/
