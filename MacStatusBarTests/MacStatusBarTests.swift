@@ -164,18 +164,19 @@ final class SystemFormatterTests: XCTestCase {
 
     func testFormatMemoryKilobytes() {
         // Note: SystemFormatter uses 1024 divisor (binary)
-        XCTAssertEqual(SystemFormatter.formatMemory(1024), "1.0 KB")
-        XCTAssertEqual(SystemFormatter.formatMemory(2048), "2.0 KB")
+        // Values < 10 show 2 decimal places, values >= 10 show 1 decimal place
+        XCTAssertEqual(SystemFormatter.formatMemory(1024), "1.00 KB")
+        XCTAssertEqual(SystemFormatter.formatMemory(2048), "2.00 KB")
     }
 
     func testFormatMemoryMegabytes() {
-        XCTAssertEqual(SystemFormatter.formatMemory(1_048_576), "1.0 MB")
+        XCTAssertEqual(SystemFormatter.formatMemory(1_048_576), "1.00 MB")
         XCTAssertEqual(SystemFormatter.formatMemory(512_000_000), "488.3 MB")
     }
 
     func testFormatMemoryGigabytes() {
-        XCTAssertEqual(SystemFormatter.formatMemory(1_073_741_824), "1.0 GB")
-        XCTAssertEqual(SystemFormatter.formatMemory(8_589_934_592), "8.0 GB")
+        XCTAssertEqual(SystemFormatter.formatMemory(1_073_741_824), "1.00 GB")
+        XCTAssertEqual(SystemFormatter.formatMemory(8_589_934_592), "8.00 GB")
     }
 }
 
