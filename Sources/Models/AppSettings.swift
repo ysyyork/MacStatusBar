@@ -51,22 +51,39 @@ final class AppSettings: ObservableObject {
     // MARK: - Launch at Login
 
     private func updateLaunchAtLogin() {
-        do {
-            if launchAtLogin {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
+        // Perform on next run loop to avoid publishing during view updates
+        Task { @MainActor in
+            do {
+                if self.launchAtLogin {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+            } catch {
+                print("Failed to update launch at login: \(error)")
             }
-        } catch {
-            print("Failed to update launch at login: \(error)")
         }
     }
 
+    private var hasInitialized = false
+
     private init() {
-        // Sync launch at login state after a delay to avoid view update issues
-        DispatchQueue.main.async { [weak self] in
-            let isEnabled = SMAppService.mainApp.status == .enabled
-            if self?.launchAtLogin != isEnabled {
+        // Delay sync to avoid view update issues during app startup
+        Task { @MainActor [weak self] in
+            // Wait for views to stabilize
+            try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+            self?.syncLaunchAtLoginState()
+        }
+    }
+
+    private func syncLaunchAtLoginState() {
+        guard !hasInitialized else { return }
+        hasInitialized = true
+
+        let isEnabled = SMAppService.mainApp.status == .enabled
+        if launchAtLogin != isEnabled {
+            // Use async to avoid publishing during view updates
+            Task { @MainActor [weak self] in
                 self?.launchAtLogin = isEnabled
             }
         }
