@@ -126,8 +126,10 @@ struct CPUSettingsView: View {
             }
 
             Section("Processes") {
-                Stepper("Show \(settings.cpuProcessCount) processes",
+                Stepper("Show \(settings.cpuProcessCount) CPU processes",
                         value: $settings.cpuProcessCount, in: 1...10)
+                Stepper("Show \(settings.memoryProcessCount) memory processes",
+                        value: $settings.memoryProcessCount, in: 1...10)
             }
         }
         .formStyle(.grouped)

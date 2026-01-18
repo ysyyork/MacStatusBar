@@ -72,29 +72,12 @@ struct CPUMenuContentView: View {
                 .padding(.vertical, 4)
             }
 
-            // Fan Speeds
-            if !monitor.fanSpeeds.isEmpty {
-                ForEach(Array(monitor.fanSpeeds.enumerated()), id: \.offset) { _, fan in
-                    HStack {
-                        Text(fan.name)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(fan.rpm) RPM")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundColor(.primary)
-                    }
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 2)
-                }
-            }
-
             Divider()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
 
-            // PROCESSES Header
-            SectionHeader(title: "PROCESSES")
+            // TOP CPU Header
+            SectionHeader(title: "TOP CPU")
 
             // Process list
             VStack(spacing: 4) {
@@ -195,6 +178,42 @@ struct CPUMenuContentView: View {
                 }
             }
             .font(.system(size: 11))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+
+            Divider()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+
+            // TOP MEMORY Header
+            SectionHeader(title: "TOP MEMORY")
+
+            // Memory process list
+            VStack(spacing: 4) {
+                ForEach(monitor.topMemoryProcesses) { process in
+                    HStack {
+                        // Process icon
+                        ProcessIconView(pid: process.pid, processName: process.name, size: 14)
+                        Text(process.name)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(SystemFormatter.formatMemory(process.memoryBytes))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+                    .font(.system(size: 11))
+                    .foregroundColor(.primary)
+                }
+
+                if monitor.topMemoryProcesses.isEmpty {
+                    Text("No active processes")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 4)
+                }
+            }
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
 
