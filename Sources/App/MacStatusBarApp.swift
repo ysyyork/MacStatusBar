@@ -193,15 +193,16 @@ struct CPUMenuBarView: View {
             HStack(spacing: 4) {
                 Image(systemName: "cpu")
                     .font(.system(size: 11))
-                Text(String(format: "%.0f%%", cpuUsage))
+                Text(String(format: "%3.0f%%", cpuUsage))
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .frame(width: 36, alignment: .trailing)
             }
             .foregroundColor(.primary)
         }
     }
 
     private func createCPUImage() -> NSImage {
-        let text = String(format: "%.0f%%", cpuUsage)
+        let text = String(format: "%3.0f%%", cpuUsage)
 
         let width: CGFloat = 55
         let height: CGFloat = 18

@@ -226,15 +226,16 @@ struct DiskMenuBarView: View {
             HStack(spacing: 3) {
                 Image(systemName: "internaldrive.fill")
                     .font(.system(size: 11))
-                Text(String(format: "%.0f%%", diskUsage * 100))
+                Text(String(format: "%3.0f%%", diskUsage * 100))
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .frame(width: 36, alignment: .trailing)
             }
             .foregroundColor(.primary)
         }
     }
 
     private func createDiskImage() -> NSImage {
-        let text = String(format: "%.0f%%", diskUsage * 100)
+        let text = String(format: "%3.0f%%", diskUsage * 100)
 
         let width: CGFloat = 50
         let height: CGFloat = 18
