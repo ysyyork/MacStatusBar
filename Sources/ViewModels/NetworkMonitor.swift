@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import Combine
 import Network
+import os.log
 
 struct ProcessNetworkUsage: Identifiable {
     let id = UUID()
@@ -21,6 +22,7 @@ final class NetworkMonitor: ObservableObject {
     @Published var lanIP: String = "—"
     @Published var wanIP: String = "—"
     @Published var topProcesses: [ProcessNetworkUsage] = []
+    @Published var isNetworkAvailable: Bool = true
 
     private var previousBytesIn: UInt64 = 0
     private var previousBytesOut: UInt64 = 0
@@ -32,23 +34,107 @@ final class NetworkMonitor: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var ipRefreshTimer: DispatchSourceTimer?
     private var processTimer: DispatchSourceTimer?
+    private var healthCheckTimer: DispatchSourceTimer?
 
     // For tracking per-process deltas
     private var previousProcessBytes: [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] = [:]
 
+    // Network reachability
+    private var pathMonitor: NWPathMonitor?
+    private let pathMonitorQueue = DispatchQueue(label: "com.macstatusbar.network.path")
+
+    // Health check properties
+    private var lastSuccessfulUpdate: Date?
+    private let healthCheckInterval: TimeInterval = 30.0
+
+    // Rate limiting
+    private var lastUpdateTime: Date?
+    private let minUpdateInterval: TimeInterval = 0.5
+
+    // WAN IP fallback services
+    private let wanIPServices = [
+        "https://api.ipify.org",
+        "https://ipinfo.io/ip",
+        "https://icanhazip.com"
+    ]
+    private var currentWANIPServiceIndex = 0
+    private var wanIPRetryCount = 0
+    private let maxWANIPRetries = 3
+
     init() {
+        setupNetworkPathMonitor()
         startMonitoring()
         refreshIPAddresses()
         startIPRefreshTimer()
         startProcessMonitoring()
+        startHealthCheckTimer()
     }
 
     deinit {
         stopMonitoring()
+        ipRefreshTimer?.setEventHandler(handler: nil)
         ipRefreshTimer?.cancel()
         ipRefreshTimer = nil
+        processTimer?.setEventHandler(handler: nil)
         processTimer?.cancel()
         processTimer = nil
+        healthCheckTimer?.setEventHandler(handler: nil)
+        healthCheckTimer?.cancel()
+        healthCheckTimer = nil
+        pathMonitor?.cancel()
+        pathMonitor = nil
+    }
+
+    // MARK: - Network Reachability
+
+    private func setupNetworkPathMonitor() {
+        pathMonitor = NWPathMonitor()
+        pathMonitor?.pathUpdateHandler = { [weak self] path in
+            let isAvailable = path.status == .satisfied
+            DispatchQueue.main.async {
+                self?.isNetworkAvailable = isAvailable
+            }
+            if isAvailable {
+                AppLogger.network.debug("Network is available")
+            } else {
+                AppLogger.network.warning("Network is unavailable")
+            }
+        }
+        pathMonitor?.start(queue: pathMonitorQueue)
+    }
+
+    // MARK: - Health Check
+
+    private func startHealthCheckTimer() {
+        let queue = DispatchQueue(label: "com.macstatusbar.network.health", qos: .utility)
+        healthCheckTimer = DispatchSource.makeTimerSource(queue: queue)
+        healthCheckTimer?.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval)
+        healthCheckTimer?.setEventHandler { [weak self] in
+            self?.checkHealth()
+        }
+        healthCheckTimer?.resume()
+    }
+
+    private func checkHealth() {
+        if let lastUpdate = lastSuccessfulUpdate,
+           Date().timeIntervalSince(lastUpdate) > healthCheckInterval {
+            AppLogger.network.warning("Network monitor stale, restarting...")
+            restartMonitoring()
+        }
+    }
+
+    private func restartMonitoring() {
+        stopMonitoring()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.startMonitoring()
+        }
+    }
+
+    // MARK: - Rate Limiting
+
+    private func shouldUpdate() -> Bool {
+        guard let last = lastUpdateTime else { return true }
+        return Date().timeIntervalSince(last) >= minUpdateInterval
     }
 
     private func startProcessMonitoring() {
@@ -68,8 +154,9 @@ final class NetworkMonitor: ObservableObject {
 
         for (name, bytes) in processBytes {
             let prev = previousProcessBytes[name] ?? (0, 0, 0)
-            let downloadDelta = bytes.bytesIn >= prev.bytesIn ? bytes.bytesIn - prev.bytesIn : 0
-            let uploadDelta = bytes.bytesOut >= prev.bytesOut ? bytes.bytesOut - prev.bytesOut : 0
+            // Handle counter wraparound
+            let downloadDelta = bytes.bytesIn >= prev.bytesIn ? bytes.bytesIn - prev.bytesIn : bytes.bytesIn
+            let uploadDelta = bytes.bytesOut >= prev.bytesOut ? bytes.bytesOut - prev.bytesOut : bytes.bytesOut
 
             // Speed per second (we poll every 2 seconds)
             let downloadSpeed = Double(downloadDelta) / 2.0
@@ -101,24 +188,17 @@ final class NetworkMonitor: ObservableObject {
     private func getProcessNetworkBytes() -> [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] {
         var result: [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] = [:]
 
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
-        task.arguments = ["-P", "-L", "1", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch", "-t", "wifi", "-t", "wired"]
+        let runResult = ProcessRunner.run(
+            executable: "/usr/bin/nettop",
+            arguments: ["-P", "-L", "1", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch", "-t", "wifi", "-t", "wired"],
+            timeout: 10.0
+        )
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                result = parseNettopOutput(output)
-            }
-        } catch {
-            // Silently fail - nettop might not be available
+        switch runResult {
+        case .success(let output):
+            result = parseNettopOutput(output)
+        case .failure(let error):
+            AppLogger.network.debug("nettop failed: \(error.localizedDescription)")
         }
 
         return result
@@ -177,8 +257,8 @@ final class NetworkMonitor: ObservableObject {
         // Get LAN IP
         let lanAddress = getLANIPAddress()
 
-        // Get WAN IP
-        fetchWANIP { wanAddress in
+        // Get WAN IP with retry logic
+        fetchWANIPWithRetry { wanAddress in
             DispatchQueue.main.async { [weak self] in
                 self?.lanIP = lanAddress ?? "—"
                 self?.wanIP = wanAddress ?? "—"
@@ -190,7 +270,10 @@ final class NetworkMonitor: ObservableObject {
         var address: String?
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
 
-        guard getifaddrs(&ifaddr) == 0 else { return nil }
+        guard getifaddrs(&ifaddr) == 0 else {
+            AppLogger.network.error("Failed to get network interfaces")
+            return nil
+        }
         defer { freeifaddrs(ifaddr) }
 
         var ptr = ifaddr
@@ -219,19 +302,95 @@ final class NetworkMonitor: ObservableObject {
         return address
     }
 
-    private func fetchWANIP(completion: @escaping (String?) -> Void) {
-        guard let url = URL(string: "https://api.ipify.org") else {
+    // MARK: - WAN IP with Retry and Fallback
+
+    private func fetchWANIPWithRetry(completion: @escaping (String?) -> Void) {
+        // Check network availability first
+        guard isNetworkAvailable else {
+            AppLogger.network.debug("Skipping WAN IP fetch - network unavailable")
             completion(nil)
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data, let ip = String(data: data, encoding: .utf8) else {
-                completion(nil)
+        wanIPRetryCount = 0
+        currentWANIPServiceIndex = 0
+        attemptWANIPFetch(completion: completion)
+    }
+
+    private func attemptWANIPFetch(completion: @escaping (String?) -> Void) {
+        guard currentWANIPServiceIndex < wanIPServices.count else {
+            AppLogger.network.warning("All WAN IP services failed")
+            completion(nil)
+            return
+        }
+
+        let urlString = wanIPServices[currentWANIPServiceIndex]
+        guard let url = URL(string: urlString) else {
+            currentWANIPServiceIndex += 1
+            attemptWANIPFetch(completion: completion)
+            return
+        }
+
+        // Create session with explicit timeout
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10.0
+        config.timeoutIntervalForResource = 15.0
+        let session = URLSession(configuration: config)
+
+        session.dataTask(with: url) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                AppLogger.network.debug("WAN IP fetch failed from \(urlString): \(error.localizedDescription)")
+                self.handleWANIPFailure(completion: completion)
                 return
             }
-            completion(ip.trimmingCharacters(in: .whitespacesAndNewlines))
+
+            guard let data = data,
+                  let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  self.isValidIPAddress(ip) else {
+                AppLogger.network.debug("Invalid response from \(urlString)")
+                self.handleWANIPFailure(completion: completion)
+                return
+            }
+
+            AppLogger.network.debug("WAN IP fetched successfully: \(ip)")
+            completion(ip)
         }.resume()
+    }
+
+    private func handleWANIPFailure(completion: @escaping (String?) -> Void) {
+        self.wanIPRetryCount += 1
+
+        if self.wanIPRetryCount < self.maxWANIPRetries {
+            // Exponential backoff: 1s, 2s, 4s
+            let delay = pow(2.0, Double(self.wanIPRetryCount - 1))
+            AppLogger.network.debug("Retrying WAN IP fetch in \(delay)s (attempt \(self.wanIPRetryCount + 1)/\(self.maxWANIPRetries))")
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.attemptWANIPFetch(completion: completion)
+            }
+        } else {
+            // Move to next service
+            self.wanIPRetryCount = 0
+            self.currentWANIPServiceIndex += 1
+            AppLogger.network.debug("Trying fallback IP service \(self.currentWANIPServiceIndex + 1)/\(self.wanIPServices.count)")
+            self.attemptWANIPFetch(completion: completion)
+        }
+    }
+
+    private func isValidIPAddress(_ ip: String) -> Bool {
+        // Basic validation for IPv4 or IPv6
+        let ipv4Pattern = #"^(\d{1,3}\.){3}\d{1,3}$"#
+        let ipv6Pattern = #"^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$"#
+
+        if ip.range(of: ipv4Pattern, options: .regularExpression) != nil {
+            // Validate each octet is 0-255
+            let octets = ip.split(separator: ".").compactMap { Int($0) }
+            return octets.count == 4 && octets.allSatisfy { $0 >= 0 && $0 <= 255 }
+        }
+
+        return ip.range(of: ipv6Pattern, options: .regularExpression) != nil
     }
 
     func startMonitoring() {
@@ -243,6 +402,7 @@ final class NetworkMonitor: ObservableObject {
         initialBytesOut = bytesOut
         previousTimestamp = Date()
         isInitialized = true
+        lastSuccessfulUpdate = Date()
 
         // Create timer for 1-second polling
         let queue = DispatchQueue(label: "com.networkutils.monitor", qos: .utility)
@@ -252,14 +412,19 @@ final class NetworkMonitor: ObservableObject {
             self?.updateStats()
         }
         timer?.resume()
+        AppLogger.network.debug("Network monitoring started")
     }
 
     func stopMonitoring() {
+        timer?.setEventHandler(handler: nil)
         timer?.cancel()
         timer = nil
+        AppLogger.network.debug("Network monitoring stopped")
     }
 
     private func updateStats() {
+        guard shouldUpdate() else { return }
+
         let now = Date()
         let (bytesIn, bytesOut) = getNetworkBytes()
 
@@ -273,16 +438,18 @@ final class NetworkMonitor: ObservableObject {
         let timeDelta = now.timeIntervalSince(prevTimestamp)
         guard timeDelta > 0 else { return }
 
-        // Calculate speeds (bytes per second)
-        let deltaIn = bytesIn >= previousBytesIn ? bytesIn - previousBytesIn : 0
-        let deltaOut = bytesOut >= previousBytesOut ? bytesOut - previousBytesOut : 0
+        // Calculate speeds (bytes per second) with counter wraparound handling
+        let deltaIn = bytesIn >= previousBytesIn ? bytesIn - previousBytesIn : bytesIn
+        let deltaOut = bytesOut >= previousBytesOut ? bytesOut - previousBytesOut : bytesOut
 
-        let newDownloadSpeed = Double(deltaIn) / timeDelta
-        let newUploadSpeed = Double(deltaOut) / timeDelta
+        // Validate and clamp speeds to reasonable values (max 10 Gbps)
+        let maxSpeed: Double = 10_000_000_000
+        let newDownloadSpeed = min(maxSpeed, max(0, Double(deltaIn) / timeDelta))
+        let newUploadSpeed = min(maxSpeed, max(0, Double(deltaOut) / timeDelta))
 
-        // Calculate session totals
-        let sessionDownloaded = bytesIn >= initialBytesIn ? bytesIn - initialBytesIn : 0
-        let sessionUploaded = bytesOut >= initialBytesOut ? bytesOut - initialBytesOut : 0
+        // Calculate session totals with wraparound handling
+        let sessionDownloaded = bytesIn >= initialBytesIn ? bytesIn - initialBytesIn : bytesIn
+        let sessionUploaded = bytesOut >= initialBytesOut ? bytesOut - initialBytesOut : bytesOut
 
         // Update on main thread
         DispatchQueue.main.async { [weak self] in
@@ -303,6 +470,8 @@ final class NetworkMonitor: ObservableObject {
         previousBytesIn = bytesIn
         previousBytesOut = bytesOut
         previousTimestamp = now
+        lastUpdateTime = now
+        lastSuccessfulUpdate = now
     }
 
     private func getNetworkBytes() -> (bytesIn: UInt64, bytesOut: UInt64) {
@@ -311,6 +480,7 @@ final class NetworkMonitor: ObservableObject {
 
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0 else {
+            AppLogger.network.error("Failed to get network interface addresses")
             return (0, 0)
         }
         defer { freeifaddrs(ifaddr) }
