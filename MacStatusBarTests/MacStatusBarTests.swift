@@ -473,4 +473,196 @@ final class SharedViewsTests: XCTestCase {
         let iconView = ProcessIconView(pid: 1, processName: "Finder", size: 16)
         XCTAssertNotNil(iconView)
     }
+
+    func testCopyableIPRowCanBeInstantiated() {
+        let ipRow = CopyableIPRow(label: "Public IP", value: "192.168.1.1")
+        XCTAssertNotNil(ipRow)
+    }
+
+    func testCopyableIPRowWithEmptyValue() {
+        let ipRow = CopyableIPRow(label: "Public IP", value: "")
+        XCTAssertNotNil(ipRow)
+    }
+
+    func testCopyableIPRowWithDash() {
+        let ipRow = CopyableIPRow(label: "Public IP", value: "—")
+        XCTAssertNotNil(ipRow)
+    }
+}
+
+// MARK: - Warning Threshold Tests
+
+final class WarningThresholdTests: XCTestCase {
+
+    func testCPUWarningThresholdDefault() {
+        let settings = AppSettings.shared
+        // Default should be 90%
+        XCTAssertEqual(settings.cpuWarningThreshold, 90.0)
+    }
+
+    func testMemoryWarningThresholdDefault() {
+        let settings = AppSettings.shared
+        // Default should be 90%
+        XCTAssertEqual(settings.memoryWarningThreshold, 90.0)
+    }
+
+    func testDiskWarningThresholdDefault() {
+        let settings = AppSettings.shared
+        // Default should be 90%
+        XCTAssertEqual(settings.diskWarningThreshold, 90.0)
+    }
+
+    func testWarningThresholdsAreInValidRange() {
+        let settings = AppSettings.shared
+        // Thresholds should be between 0 and 100
+        XCTAssertGreaterThanOrEqual(settings.cpuWarningThreshold, 0)
+        XCTAssertLessThanOrEqual(settings.cpuWarningThreshold, 100)
+
+        XCTAssertGreaterThanOrEqual(settings.memoryWarningThreshold, 0)
+        XCTAssertLessThanOrEqual(settings.memoryWarningThreshold, 100)
+
+        XCTAssertGreaterThanOrEqual(settings.diskWarningThreshold, 0)
+        XCTAssertLessThanOrEqual(settings.diskWarningThreshold, 100)
+    }
+}
+
+// MARK: - Additional Formatter Tests
+
+final class AdditionalFormatterTests: XCTestCase {
+
+    // MARK: - compactSpeedOrDash Tests
+
+    func testCompactSpeedOrDashReturnsValueForPositive() {
+        XCTAssertEqual(ByteFormatter.compactSpeedOrDash(1000), "1.0 KB/s")
+        XCTAssertEqual(ByteFormatter.compactSpeedOrDash(5_000_000), "5.0 MB/s")
+    }
+
+    func testCompactSpeedOrDashReturnsDashForZero() {
+        XCTAssertEqual(ByteFormatter.compactSpeedOrDash(0), "—")
+    }
+
+    func testCompactSpeedOrDashReturnsDashForNegative() {
+        XCTAssertEqual(ByteFormatter.compactSpeedOrDash(-1), "—")
+        XCTAssertEqual(ByteFormatter.compactSpeedOrDash(-1000), "—")
+    }
+
+    // MARK: - formatMemoryUsage Tests
+
+    func testFormatMemoryUsageGigabytes() {
+        // 28.9 GB used of 32 GB
+        let used: UInt64 = 31_037_849_600  // ~28.9 GiB
+        let total: UInt64 = 34_359_738_368  // 32 GiB
+        let result = SystemFormatter.formatMemoryUsage(used: used, total: total)
+        XCTAssertTrue(result.contains("GB"))
+        XCTAssertTrue(result.contains("/"))
+    }
+
+    func testFormatMemoryUsageMegabytes() {
+        // 500 MB used of 1024 MB
+        let used: UInt64 = 524_288_000  // 500 MiB
+        let total: UInt64 = 1_073_741_824  // 1 GiB
+        let result = SystemFormatter.formatMemoryUsage(used: used, total: total)
+        // Should use GB as unit since total is 1 GB
+        XCTAssertTrue(result.contains("GB") || result.contains("MB"))
+        XCTAssertTrue(result.contains("/"))
+    }
+
+    func testFormatMemoryUsageZero() {
+        let result = SystemFormatter.formatMemoryUsage(used: 0, total: 0)
+        XCTAssertEqual(result, "0/0 B")
+    }
+
+    // MARK: - formatDiskSpace Tests
+
+    func testFormatDiskSpaceGigabytes() {
+        // 500 GB (using 1000 divisor)
+        XCTAssertEqual(SystemFormatter.formatDiskSpace(500_000_000_000), "500.0 GB")
+    }
+
+    func testFormatDiskSpaceTerabytes() {
+        // 2 TB
+        XCTAssertEqual(SystemFormatter.formatDiskSpace(2_000_000_000_000), "2.0 TB")
+    }
+
+    func testFormatDiskSpaceZero() {
+        XCTAssertEqual(SystemFormatter.formatDiskSpace(0), "0 B")
+    }
+
+    // MARK: - formatDiskUsage Tests
+
+    func testFormatDiskUsage() {
+        let free: UInt64 = 209_300_000_000  // 209.3 GB
+        let total: UInt64 = 500_000_000_000  // 500 GB
+        let result = SystemFormatter.formatDiskUsage(free: free, total: total)
+        XCTAssertTrue(result.contains("free of"))
+        XCTAssertTrue(result.contains("GB"))
+    }
+
+    func testFormatDiskUsageTerabyte() {
+        let free: UInt64 = 500_000_000_000  // 500 GB
+        let total: UInt64 = 2_000_000_000_000  // 2 TB
+        let result = SystemFormatter.formatDiskUsage(free: free, total: total)
+        XCTAssertTrue(result.contains("free of"))
+        XCTAssertTrue(result.contains("500.0 GB"))
+        XCTAssertTrue(result.contains("2.0 TB"))
+    }
+
+    // MARK: - menuBarSpeed Tests
+
+    func testMenuBarSpeedZero() {
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(0), "0 B/s")
+    }
+
+    func testMenuBarSpeedKilobytes() {
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(13_000), "13 KB/s")
+    }
+
+    func testMenuBarSpeedMegabytes() {
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(5_500_000), "6 MB/s")  // Rounds to integer
+    }
+
+    func testMenuBarSpeedNegative() {
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(-100), "0 KB/s")
+    }
+}
+
+// MARK: - Menu Bar View Tests
+
+final class MenuBarViewTests: XCTestCase {
+
+    func testCPUMenuBarViewNormalState() {
+        // Below threshold - should not show warning
+        let view = CPUMenuBarView(cpuUsage: 50.0, warningThreshold: 90.0)
+        XCTAssertNotNil(view)
+    }
+
+    func testCPUMenuBarViewWarningState() {
+        // Above threshold - should show warning
+        let view = CPUMenuBarView(cpuUsage: 95.0, warningThreshold: 90.0)
+        XCTAssertNotNil(view)
+    }
+
+    func testCPUMenuBarViewCustomThreshold() {
+        // Test with custom threshold
+        let view = CPUMenuBarView(cpuUsage: 75.0, warningThreshold: 70.0)
+        XCTAssertNotNil(view)
+    }
+
+    func testDiskMenuBarViewNormalState() {
+        // Below threshold (0.5 = 50%)
+        let view = DiskMenuBarView(diskUsage: 0.5, warningThreshold: 90.0)
+        XCTAssertNotNil(view)
+    }
+
+    func testDiskMenuBarViewWarningState() {
+        // Above threshold (0.95 = 95%)
+        let view = DiskMenuBarView(diskUsage: 0.95, warningThreshold: 90.0)
+        XCTAssertNotNil(view)
+    }
+
+    func testDiskMenuBarViewCustomThreshold() {
+        // Test with custom threshold
+        let view = DiskMenuBarView(diskUsage: 0.8, warningThreshold: 75.0)
+        XCTAssertNotNil(view)
+    }
 }

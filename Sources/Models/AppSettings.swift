@@ -36,6 +36,12 @@ final class AppSettings: ObservableObject {
     @AppStorage("cpuShowUptime") var cpuShowUptime: Bool = true
     @AppStorage("cpuProcessCount") var cpuProcessCount: Int = 5
 
+    // MARK: - Warning Thresholds
+
+    @AppStorage("cpuWarningThreshold") var cpuWarningThreshold: Double = 90.0
+    @AppStorage("memoryWarningThreshold") var memoryWarningThreshold: Double = 90.0
+    @AppStorage("diskWarningThreshold") var diskWarningThreshold: Double = 90.0
+
     // MARK: - Disk Settings
 
     @AppStorage("diskShowNetworkDisks") var diskShowNetworkDisks: Bool = true

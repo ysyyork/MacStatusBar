@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Network Menu Content View (MVVM - View Layer)
 
@@ -11,27 +12,10 @@ struct NetworkMenuContentView: View {
             // NETWORK Header
             SectionHeader(title: "NETWORK")
 
-            // IP Addresses
+            // IP Addresses (click to copy)
             VStack(spacing: 6) {
-                HStack {
-                    Text("Public IP")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(monitor.wanIP)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(.primary)
-                        .textSelection(.enabled)
-                }
-
-                HStack {
-                    Text("Local IP")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(monitor.lanIP)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(.primary)
-                        .textSelection(.enabled)
-                }
+                CopyableIPRow(label: "Public IP", value: monitor.wanIP)
+                CopyableIPRow(label: "Local IP", value: monitor.lanIP)
             }
             .font(.system(size: 12))
             .padding(.horizontal, 16)
@@ -224,6 +208,53 @@ struct SpeedHistogramView: View {
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
+            }
+        }
+    }
+}
+
+// MARK: - Copyable IP Row
+
+struct CopyableIPRow: View {
+    let label: String
+    let value: String
+    @State private var showCopied = false
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.secondary)
+            Spacer()
+            HStack(spacing: 4) {
+                Text(showCopied ? "Copied!" : value)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(showCopied ? .green : .primary)
+                if !showCopied && !value.isEmpty && value != "—" {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                copyToClipboard()
+            }
+        }
+    }
+
+    private func copyToClipboard() {
+        guard !value.isEmpty && value != "—" else { return }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+
+        withAnimation {
+            showCopied = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation {
+                showCopied = false
             }
         }
     }

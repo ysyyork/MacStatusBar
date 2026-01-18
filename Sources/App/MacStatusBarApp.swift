@@ -79,7 +79,7 @@ struct MacStatusBarApp: App {
         }
 
         // Network Monitor Menu Bar Extra
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $settings.showNetworkMonitor) {
             NetworkMenuContentView(monitor: networkMonitor, settings: settings)
         } label: {
             NetworkMenuBarView(
@@ -91,20 +91,24 @@ struct MacStatusBarApp: App {
         .menuBarExtraStyle(.window)
 
         // CPU/GPU Monitor Menu Bar Extra
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $settings.showCPUMonitor) {
             CPUMenuContentView(monitor: cpuMonitor, settings: settings)
         } label: {
             CPUMenuBarView(
-                cpuUsage: cpuMonitor.userCPU + cpuMonitor.systemCPU
+                cpuUsage: cpuMonitor.userCPU + cpuMonitor.systemCPU,
+                warningThreshold: settings.cpuWarningThreshold
             )
         }
         .menuBarExtraStyle(.window)
 
         // Disk Monitor Menu Bar Extra
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $settings.showDiskMonitor) {
             DiskMenuContentView(monitor: diskMonitor, settings: settings)
         } label: {
-            DiskMenuBarView(diskUsage: diskMonitor.mainDiskUsage)
+            DiskMenuBarView(
+                diskUsage: diskMonitor.mainDiskUsage,
+                warningThreshold: settings.diskWarningThreshold
+            )
         }
         .menuBarExtraStyle(.window)
     }
@@ -174,9 +178,10 @@ typealias MenuBarView = NetworkMenuBarView
 
 struct CPUMenuBarView: View {
     let cpuUsage: Double
+    var warningThreshold: Double = 90.0
 
     private var isHighUsage: Bool {
-        cpuUsage > 90
+        cpuUsage > warningThreshold
     }
 
     var body: some View {

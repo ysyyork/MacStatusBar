@@ -95,6 +95,28 @@ struct CPUSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Warning Thresholds") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("CPU Warning")
+                        Spacer()
+                        Text("\(Int(settings.cpuWarningThreshold))%")
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.cpuWarningThreshold, in: 50...100, step: 5)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Memory Warning")
+                        Spacer()
+                        Text("\(Int(settings.memoryWarningThreshold))%")
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.memoryWarningThreshold, in: 50...100, step: 5)
+                }
+            }
+
             Section("Dropdown Sections") {
                 Toggle("Show Temperature", isOn: $settings.cpuShowTemperature)
                 Toggle("Show GPU Stats", isOn: $settings.cpuShowGPU)
@@ -120,6 +142,18 @@ struct DiskSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Warning Threshold") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Disk Usage Warning")
+                        Spacer()
+                        Text("\(Int(settings.diskWarningThreshold))%")
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.diskWarningThreshold, in: 50...100, step: 5)
+                }
+            }
+
             Section("Dropdown Sections") {
                 Toggle("Show Network Disks", isOn: $settings.diskShowNetworkDisks)
                 Toggle("Show Process Activity", isOn: $settings.diskShowProcesses)
