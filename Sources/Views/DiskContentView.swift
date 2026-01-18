@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Disk Menu Content View (MVVM - View Layer)
 
@@ -212,15 +213,82 @@ struct DiskUsageBar: View {
 
 struct DiskMenuBarView: View {
     let diskUsage: Double  // 0.0 to 1.0
+    var warningThreshold: Double = 90.0
+
+    private var isHighUsage: Bool {
+        (diskUsage * 100) > warningThreshold
+    }
 
     var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "internaldrive.fill")
-                .font(.system(size: 11))
-            Text(String(format: "%.0f%%", diskUsage * 100))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+        if isHighUsage {
+            Image(nsImage: createDiskImage())
+        } else {
+            HStack(spacing: 3) {
+                Image(systemName: "internaldrive.fill")
+                    .font(.system(size: 11))
+                Text(String(format: "%.0f%%", diskUsage * 100))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+            }
+            .foregroundColor(.primary)
         }
-        .foregroundColor(.primary)  // Adapts to light/dark menu bar
+    }
+
+    private func createDiskImage() -> NSImage {
+        let text = String(format: "%.0f%%", diskUsage * 100)
+
+        let width: CGFloat = 50
+        let height: CGFloat = 18
+
+        let image = NSImage(size: NSSize(width: width, height: height))
+
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(width * 2),
+            pixelsHigh: Int(height * 2),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        )!
+        rep.size = NSSize(width: width, height: height)
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+        let textColor = NSColor.red
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor
+        ]
+
+        // Draw icon with red tint
+        if let iconImage = NSImage(systemSymbolName: "internaldrive.fill", accessibilityDescription: nil) {
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            if let configuredIcon = iconImage.withSymbolConfiguration(config) {
+                let tintedIcon = configuredIcon.copy() as! NSImage
+                tintedIcon.lockFocus()
+                textColor.set()
+                let iconRect = NSRect(origin: .zero, size: tintedIcon.size)
+                iconRect.fill(using: .sourceAtop)
+                tintedIcon.unlockFocus()
+                tintedIcon.draw(in: NSRect(x: 0, y: 2, width: 14, height: 14))
+            }
+        }
+
+        // Draw text
+        let textString = NSAttributedString(string: text, attributes: attrs)
+        textString.draw(at: NSPoint(x: 16, y: 1))
+
+        NSGraphicsContext.restoreGraphicsState()
+
+        image.addRepresentation(rep)
+        image.isTemplate = false
+        return image
     }
 }
 

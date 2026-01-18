@@ -66,11 +66,11 @@ struct MacStatusBarApp: App {
     @StateObject private var cpuMonitor = CPUMonitor()
     @StateObject private var diskMonitor = DiskMonitor()
 
-    // Use ObservedObject for the shared singleton to avoid state conflicts
-    @ObservedObject private var settings = AppSettings.shared
-
     // Initialize the coordinator to start monitoring
     private let coordinator = MenuBarCoordinator.shared
+
+    // Access settings as a regular property (not @ObservedObject to avoid view update issues)
+    private var settings: AppSettings { AppSettings.shared }
 
     var body: some Scene {
         // Settings Window
@@ -80,31 +80,35 @@ struct MacStatusBarApp: App {
 
         // Network Monitor Menu Bar Extra
         MenuBarExtra {
-            NetworkMenuContentView(monitor: networkMonitor, settings: settings)
+            NetworkMenuContentView(monitor: networkMonitor, settings: AppSettings.shared)
         } label: {
             NetworkMenuBarView(
                 uploadSpeed: networkMonitor.uploadSpeed,
                 downloadSpeed: networkMonitor.downloadSpeed,
-                settings: settings
+                settings: AppSettings.shared
             )
         }
         .menuBarExtraStyle(.window)
 
         // CPU/GPU Monitor Menu Bar Extra
         MenuBarExtra {
-            CPUMenuContentView(monitor: cpuMonitor, settings: settings)
+            CPUMenuContentView(monitor: cpuMonitor, settings: AppSettings.shared)
         } label: {
             CPUMenuBarView(
-                cpuUsage: cpuMonitor.userCPU + cpuMonitor.systemCPU
+                cpuUsage: cpuMonitor.userCPU + cpuMonitor.systemCPU,
+                warningThreshold: AppSettings.shared.cpuWarningThreshold
             )
         }
         .menuBarExtraStyle(.window)
 
         // Disk Monitor Menu Bar Extra
         MenuBarExtra {
-            DiskMenuContentView(monitor: diskMonitor, settings: settings)
+            DiskMenuContentView(monitor: diskMonitor, settings: AppSettings.shared)
         } label: {
-            DiskMenuBarView(diskUsage: diskMonitor.mainDiskUsage)
+            DiskMenuBarView(
+                diskUsage: diskMonitor.mainDiskUsage,
+                warningThreshold: AppSettings.shared.diskWarningThreshold
+            )
         }
         .menuBarExtraStyle(.window)
     }
@@ -174,9 +178,10 @@ typealias MenuBarView = NetworkMenuBarView
 
 struct CPUMenuBarView: View {
     let cpuUsage: Double
+    var warningThreshold: Double = 90.0
 
     private var isHighUsage: Bool {
-        cpuUsage > 90
+        cpuUsage > warningThreshold
     }
 
     var body: some View {
