@@ -177,3 +177,16 @@ enum SpeedUnit: String, CaseIterable {
     case kilobytesPerSec = "KB/s"
     case megabytesPerSec = "MB/s"
 }
+
+// Custom RawRepresentable to default invalid values to .auto
+extension SpeedUnit: RawRepresentable {
+    init?(rawValue: String) {
+        switch rawValue {
+        case "Auto": self = .auto
+        case "B/s": self = .bytesPerSec
+        case "KB/s": self = .kilobytesPerSec
+        case "MB/s": self = .megabytesPerSec
+        default: self = .auto
+        }
+    }
+}
