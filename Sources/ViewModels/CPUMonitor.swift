@@ -477,8 +477,13 @@ final class CPUMonitor: ObservableObject {
     // MARK: - Process Stats
 
     private func updateProcessStats() {
-        let cpuProcesses = getTopProcesses()
-        let memProcesses = getTopMemoryProcesses()
+        // Read settings on background thread via UserDefaults (thread-safe)
+        // instead of accessing @Published properties from AppSettings.shared
+        let cpuLimit = UserDefaults.standard.object(forKey: "cpuProcessCount") as? Int ?? 5
+        let memLimit = UserDefaults.standard.object(forKey: "memoryProcessCount") as? Int ?? 5
+
+        let cpuProcesses = getTopProcesses(limit: cpuLimit)
+        let memProcesses = getTopMemoryProcesses(limit: memLimit)
 
         DispatchQueue.main.async { [weak self] in
             self?.topProcesses = cpuProcesses
@@ -486,7 +491,7 @@ final class CPUMonitor: ObservableObject {
         }
     }
 
-    private func getTopProcesses() -> [ProcessCPUUsage] {
+    private func getTopProcesses(limit: Int) -> [ProcessCPUUsage] {
         var result: [ProcessCPUUsage] = []
 
         let runResult = ProcessRunner.run(
@@ -500,9 +505,8 @@ final class CPUMonitor: ObservableObject {
             let lines = output.components(separatedBy: "\n")
             var count = 0
 
-            let maxProcesses = AppSettings.shared.cpuProcessCount
             for line in lines {
-                if count >= maxProcesses { break }
+                if count >= limit { break }
 
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 if trimmed.isEmpty || trimmed.hasPrefix("PID") { continue }
@@ -535,7 +539,7 @@ final class CPUMonitor: ObservableObject {
         return result
     }
 
-    private func getTopMemoryProcesses() -> [ProcessMemoryUsage] {
+    private func getTopMemoryProcesses(limit: Int) -> [ProcessMemoryUsage] {
         var result: [ProcessMemoryUsage] = []
 
         // ps -Aceo pid,rss,comm -m sorts by memory (rss = resident set size in KB)
@@ -550,9 +554,8 @@ final class CPUMonitor: ObservableObject {
             let lines = output.components(separatedBy: "\n")
             var count = 0
 
-            let maxProcesses = AppSettings.shared.memoryProcessCount
             for line in lines {
-                if count >= maxProcesses { break }
+                if count >= limit { break }
 
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 if trimmed.isEmpty || trimmed.hasPrefix("PID") { continue }
@@ -564,8 +567,9 @@ final class CPUMonitor: ObservableObject {
                         let name = String(components[2])
                         let processName = (name as NSString).lastPathComponent
 
-                        // Convert KB to bytes
-                        let memoryBytes = rssKB * 1024
+                        // Convert KB to bytes and clamp to reasonable range
+                        // Max 1TB to catch any invalid/overflow values
+                        let memoryBytes = min(1_099_511_627_776, rssKB * 1024)
 
                         // Only show processes using significant memory (> 1MB)
                         if memoryBytes > 1_048_576 {
