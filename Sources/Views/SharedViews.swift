@@ -176,18 +176,14 @@ struct LegendItem: View {
 // MARK: - Menu Footer Buttons (Settings + Quit)
 
 struct MenuFooterButtons: View {
+    @Environment(\.openSettings) private var openSettings
+
     var body: some View {
         VStack(spacing: 0) {
-            // Settings Button - using custom action to ensure window activates properly
+            // Settings Button - activate app before opening settings to ensure window comes to front
             Button(action: {
-                // Activate the app first, then open settings
                 NSApp.activate(ignoringOtherApps: true)
-                // Use selector to open settings window (works with SwiftUI Settings scene)
-                if #available(macOS 14.0, *) {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                } else {
-                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-                }
+                openSettings()
             }) {
                 HStack {
                     Text("Settings...")
