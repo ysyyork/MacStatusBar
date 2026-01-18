@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import os.log
 
 // Required for proc_pid_rusage
 @_silgen_name("proc_pid_rusage")
@@ -63,6 +64,7 @@ final class DiskMonitor: ObservableObject {
 
     private var timer: DispatchSourceTimer?
     private var processTimer: DispatchSourceTimer?
+    private var healthCheckTimer: DispatchSourceTimer?
     private var previousDiskStats: [String: (read: UInt64, write: UInt64)] = [:]
     private var previousProcessStats: [Int32: (read: UInt64, write: UInt64)] = [:]
 
@@ -70,19 +72,70 @@ final class DiskMonitor: ObservableObject {
     private var recentProcessActivity: [Int32: RecentProcessActivity] = [:]
     private let recentActivityTimeout: TimeInterval = 15.0  // Keep showing for 15 seconds after last activity
 
+    // Health check properties
+    private var lastSuccessfulUpdate: Date?
+    private let healthCheckInterval: TimeInterval = 30.0
+
+    // Rate limiting
+    private var lastUpdateTime: Date?
+    private let minUpdateInterval: TimeInterval = 0.5
+
     // MARK: - Initialization
 
     init() {
         updateDisks()
         startMonitoring()
         startProcessMonitoring()
+        startHealthCheckTimer()
     }
 
     deinit {
+        timer?.setEventHandler(handler: nil)
         timer?.cancel()
         timer = nil
+        processTimer?.setEventHandler(handler: nil)
         processTimer?.cancel()
         processTimer = nil
+        healthCheckTimer?.setEventHandler(handler: nil)
+        healthCheckTimer?.cancel()
+        healthCheckTimer = nil
+    }
+
+    // MARK: - Health Check
+
+    private func startHealthCheckTimer() {
+        let queue = DispatchQueue(label: "com.macstatusbar.disk.health", qos: .utility)
+        healthCheckTimer = DispatchSource.makeTimerSource(queue: queue)
+        healthCheckTimer?.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval)
+        healthCheckTimer?.setEventHandler { [weak self] in
+            self?.checkHealth()
+        }
+        healthCheckTimer?.resume()
+    }
+
+    private func checkHealth() {
+        if let lastUpdate = lastSuccessfulUpdate,
+           Date().timeIntervalSince(lastUpdate) > healthCheckInterval {
+            AppLogger.disk.warning("Disk monitor stale, restarting...")
+            restartMonitoring()
+        }
+    }
+
+    private func restartMonitoring() {
+        timer?.setEventHandler(handler: nil)
+        timer?.cancel()
+        timer = nil
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.startMonitoring()
+        }
+    }
+
+    // MARK: - Rate Limiting
+
+    private func shouldUpdate() -> Bool {
+        guard let last = lastUpdateTime else { return true }
+        return Date().timeIntervalSince(last) >= minUpdateInterval
     }
 
     // MARK: - Monitoring Control
@@ -96,6 +149,8 @@ final class DiskMonitor: ObservableObject {
             self?.updateDiskIO()
         }
         timer?.resume()
+        lastSuccessfulUpdate = Date()
+        AppLogger.disk.debug("Disk monitoring started")
     }
 
     private func startProcessMonitoring() {
@@ -111,6 +166,8 @@ final class DiskMonitor: ObservableObject {
     // MARK: - Disk Info
 
     private func updateDisks() {
+        guard shouldUpdate() else { return }
+
         var localDisks: [DiskInfo] = []
         var netDisks: [DiskInfo] = []
 
@@ -124,7 +181,10 @@ final class DiskMonitor: ObservableObject {
                 .volumeIsLocalKey
             ],
             options: [.skipHiddenVolumes]
-        ) else { return }
+        ) else {
+            AppLogger.disk.debug("Failed to get mounted volumes")
+            return
+        }
 
         for volumeURL in mountedVolumes {
             do {
@@ -149,11 +209,15 @@ final class DiskMonitor: ObservableObject {
                 if totalCapacity < 1_000_000_000 { continue } // Skip < 1GB
                 if name == "Recovery" || name == "Preboot" || name == "VM" { continue }
 
+                // Validate capacity values
+                let validTotal = UInt64(max(0, totalCapacity))
+                let validAvailable = UInt64(max(0, min(availableCapacity, totalCapacity)))
+
                 let diskInfo = DiskInfo(
                     name: name,
                     mountPoint: volumeURL.path,
-                    totalSpace: UInt64(totalCapacity),
-                    freeSpace: UInt64(availableCapacity),
+                    totalSpace: validTotal,
+                    freeSpace: validAvailable,
                     isNetworkDisk: !isLocal,
                     isRemovable: isRemovable
                 )
@@ -164,6 +228,7 @@ final class DiskMonitor: ObservableObject {
                     netDisks.append(diskInfo)
                 }
             } catch {
+                AppLogger.disk.debug("Failed to get resource values for \(volumeURL.path): \(error.localizedDescription)")
                 continue
             }
         }
@@ -176,6 +241,9 @@ final class DiskMonitor: ObservableObject {
             self?.disks = localDisks
             self?.networkDisks = netDisks
         }
+
+        lastUpdateTime = Date()
+        lastSuccessfulUpdate = Date()
     }
 
     // MARK: - Disk I/O
@@ -188,8 +256,9 @@ final class DiskMonitor: ObservableObject {
 
         for (disk, current) in stats {
             if let previous = previousDiskStats[disk] {
-                let readDelta = current.read >= previous.read ? current.read - previous.read : 0
-                let writeDelta = current.write >= previous.write ? current.write - previous.write : 0
+                // Handle counter wraparound
+                let readDelta = current.read >= previous.read ? current.read - previous.read : current.read
+                let writeDelta = current.write >= previous.write ? current.write - previous.write : current.write
                 totalRead += readDelta
                 totalWrite += writeDelta
             }
@@ -198,8 +267,10 @@ final class DiskMonitor: ObservableObject {
         previousDiskStats = stats
 
         // Convert to bytes per second (we poll every 2 seconds)
-        let readSpeed = Double(totalRead) / 2.0
-        let writeSpeed = Double(totalWrite) / 2.0
+        // Clamp to reasonable values (max 10 GB/s for NVMe)
+        let maxSpeed: Double = 10_000_000_000
+        let readSpeed = min(maxSpeed, max(0, Double(totalRead) / 2.0))
+        let writeSpeed = min(maxSpeed, max(0, Double(totalWrite) / 2.0))
 
         DispatchQueue.main.async { [weak self] in
             self?.totalReadSpeed = readSpeed
@@ -211,36 +282,29 @@ final class DiskMonitor: ObservableObject {
         var result: [String: (read: UInt64, write: UInt64)] = [:]
 
         // Use iostat to get disk I/O statistics
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/iostat")
-        task.arguments = ["-d", "-c", "1"]
+        let runResult = ProcessRunner.run(
+            executable: "/usr/sbin/iostat",
+            arguments: ["-d", "-c", "1"],
+            timeout: 5.0
+        )
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
+        switch runResult {
+        case .success(let output):
+            let lines = output.components(separatedBy: "\n")
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("disk") || trimmed.isEmpty || trimmed.contains("KB/t") {
+                    continue
+                }
 
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                let lines = output.components(separatedBy: "\n")
-                for line in lines {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.hasPrefix("disk") || trimmed.isEmpty || trimmed.contains("KB/t") {
-                        continue
-                    }
-
-                    let components = trimmed.split(separator: " ", omittingEmptySubsequences: true)
-                    if components.count >= 3 {
-                        // iostat output: KB/t tps MB/s
-                        // We need cumulative bytes, so use activity monitor approach
-                    }
+                let components = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+                if components.count >= 3 {
+                    // iostat output: KB/t tps MB/s
+                    // We need cumulative bytes, so use activity monitor approach
                 }
             }
-        } catch {
-            // Silently fail
+        case .failure(let error):
+            AppLogger.disk.debug("iostat failed: \(error.localizedDescription)")
         }
 
         // Alternative: use ioreg for disk statistics
@@ -250,43 +314,36 @@ final class DiskMonitor: ObservableObject {
     private func getDiskIOViaIOReg() -> [String: (read: UInt64, write: UInt64)] {
         var result: [String: (read: UInt64, write: UInt64)] = [:]
 
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
-        task.arguments = ["-r", "-c", "IOBlockStorageDriver", "-d", "1"]
+        let runResult = ProcessRunner.run(
+            executable: "/usr/sbin/ioreg",
+            arguments: ["-r", "-c", "IOBlockStorageDriver", "-d", "1"],
+            timeout: 5.0
+        )
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
+        switch runResult {
+        case .success(let output):
+            var currentDisk = "disk"
+            var bytesRead: UInt64 = 0
+            var bytesWritten: UInt64 = 0
 
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                var currentDisk = "disk"
-                var bytesRead: UInt64 = 0
-                var bytesWritten: UInt64 = 0
-
-                let lines = output.components(separatedBy: "\n")
-                for line in lines {
-                    if line.contains("\"Bytes (Read)\"") {
-                        if let value = extractNumber(from: line) {
-                            bytesRead = value
-                        }
-                    } else if line.contains("\"Bytes (Write)\"") {
-                        if let value = extractNumber(from: line) {
-                            bytesWritten = value
-                        }
+            let lines = output.components(separatedBy: "\n")
+            for line in lines {
+                if line.contains("\"Bytes (Read)\"") {
+                    if let value = extractNumber(from: line) {
+                        bytesRead = value
+                    }
+                } else if line.contains("\"Bytes (Write)\"") {
+                    if let value = extractNumber(from: line) {
+                        bytesWritten = value
                     }
                 }
-
-                if bytesRead > 0 || bytesWritten > 0 {
-                    result[currentDisk] = (bytesRead, bytesWritten)
-                }
             }
-        } catch {
-            // Silently fail
+
+            if bytesRead > 0 || bytesWritten > 0 {
+                result[currentDisk] = (bytesRead, bytesWritten)
+            }
+        case .failure(let error):
+            AppLogger.disk.debug("ioreg failed: \(error.localizedDescription)")
         }
 
         return result
@@ -316,94 +373,91 @@ final class DiskMonitor: ObservableObject {
 
         // Use fs_usage or iotop equivalent
         // Since fs_usage requires root, we'll use a different approach
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/ps")
-        task.arguments = ["-Aceo", "pid,comm"]
+        let runResult = ProcessRunner.run(
+            executable: "/bin/ps",
+            arguments: ["-Aceo", "pid,comm"],
+            timeout: 5.0
+        )
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
+        switch runResult {
+        case .success(let output):
+            var processes: [(pid: Int32, name: String)] = []
 
-        do {
-            try task.run()
-            task.waitUntilExit()
+            let lines = output.components(separatedBy: "\n")
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty || trimmed.hasPrefix("PID") { continue }
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                var processes: [(pid: Int32, name: String)] = []
-
-                let lines = output.components(separatedBy: "\n")
-                for line in lines {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.isEmpty || trimmed.hasPrefix("PID") { continue }
-
-                    let components = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-                    if components.count >= 2,
-                       let pid = Int32(components[0]) {
-                        let name = String(components[1])
-                        let processName = (name as NSString).lastPathComponent
-                        processes.append((pid, processName))
-                    }
-                }
-
-                // Get current running PIDs for cleanup
-                let currentPids = Set(processes.map { $0.pid })
-
-                // Get I/O stats for each process using /proc equivalent on macOS
-                for (pid, name) in processes.prefix(100) {
-                    if let ioStats = getProcessIOStats(pid: pid) {
-                        let prev = previousProcessStats[pid] ?? (0, 0)
-                        let readDelta = ioStats.read >= prev.read ? ioStats.read - prev.read : 0
-                        let writeDelta = ioStats.write >= prev.write ? ioStats.write - prev.write : 0
-
-                        previousProcessStats[pid] = ioStats
-
-                        // Calculate speed (poll every 2s)
-                        let readSpeed = Double(readDelta) / 2.0
-                        let writeSpeed = Double(writeDelta) / 2.0
-                        let hasActivity = readSpeed > 0 || writeSpeed > 0
-
-                        // Update or create recent activity entry
-                        if hasActivity {
-                            if var existing = recentProcessActivity[pid] {
-                                existing.totalActivity += readDelta + writeDelta
-                                existing.lastActiveTime = now
-                                existing.currentReadSpeed = readSpeed
-                                existing.currentWriteSpeed = writeSpeed
-                                recentProcessActivity[pid] = existing
-                            } else {
-                                recentProcessActivity[pid] = RecentProcessActivity(
-                                    name: name,
-                                    pid: pid,
-                                    totalActivity: readDelta + writeDelta,
-                                    lastActiveTime: now,
-                                    currentReadSpeed: readSpeed,
-                                    currentWriteSpeed: writeSpeed
-                                )
-                            }
-                        } else if var existing = recentProcessActivity[pid] {
-                            // Process exists but no current activity - update speeds to 0
-                            existing.currentReadSpeed = 0
-                            existing.currentWriteSpeed = 0
-                            recentProcessActivity[pid] = existing
-                        }
-                    }
-                }
-
-                // Remove entries for processes that no longer exist or have timed out
-                recentProcessActivity = recentProcessActivity.filter { (pid, activity) in
-                    // Keep if process still exists and hasn't timed out
-                    let isStillRunning = currentPids.contains(pid)
-                    let isRecent = now.timeIntervalSince(activity.lastActiveTime) < recentActivityTimeout
-                    return isStillRunning && isRecent
+                let components = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                if components.count >= 2,
+                   let pid = Int32(components[0]) {
+                    let name = String(components[1])
+                    let processName = (name as NSString).lastPathComponent
+                    processes.append((pid, processName))
                 }
             }
-        } catch {
-            // Silently fail
+
+            // Get current running PIDs for cleanup
+            let currentPids = Set(processes.map { $0.pid })
+
+            // Get I/O stats for each process using /proc equivalent on macOS
+            for (pid, name) in processes.prefix(100) {
+                if let ioStats = getProcessIOStats(pid: pid) {
+                    let prev = previousProcessStats[pid] ?? (0, 0)
+                    // Handle counter wraparound
+                    let readDelta = ioStats.read >= prev.read ? ioStats.read - prev.read : ioStats.read
+                    let writeDelta = ioStats.write >= prev.write ? ioStats.write - prev.write : ioStats.write
+
+                    previousProcessStats[pid] = ioStats
+
+                    // Calculate speed (poll every 2s)
+                    // Clamp to reasonable values (max 5 GB/s per process)
+                    let maxProcessSpeed: Double = 5_000_000_000
+                    let readSpeed = min(maxProcessSpeed, max(0, Double(readDelta) / 2.0))
+                    let writeSpeed = min(maxProcessSpeed, max(0, Double(writeDelta) / 2.0))
+                    let hasActivity = readSpeed > 0 || writeSpeed > 0
+
+                    // Update or create recent activity entry
+                    if hasActivity {
+                        if var existing = recentProcessActivity[pid] {
+                            existing.totalActivity += readDelta + writeDelta
+                            existing.lastActiveTime = now
+                            existing.currentReadSpeed = readSpeed
+                            existing.currentWriteSpeed = writeSpeed
+                            recentProcessActivity[pid] = existing
+                        } else {
+                            recentProcessActivity[pid] = RecentProcessActivity(
+                                name: name,
+                                pid: pid,
+                                totalActivity: readDelta + writeDelta,
+                                lastActiveTime: now,
+                                currentReadSpeed: readSpeed,
+                                currentWriteSpeed: writeSpeed
+                            )
+                        }
+                    } else if var existing = recentProcessActivity[pid] {
+                        // Process exists but no current activity - update speeds to 0
+                        existing.currentReadSpeed = 0
+                        existing.currentWriteSpeed = 0
+                        recentProcessActivity[pid] = existing
+                    }
+                }
+            }
+
+            // Remove entries for processes that no longer exist or have timed out
+            recentProcessActivity = recentProcessActivity.filter { (pid, activity) in
+                // Keep if process still exists and hasn't timed out
+                let isStillRunning = currentPids.contains(pid)
+                let isRecent = now.timeIntervalSince(activity.lastActiveTime) < recentActivityTimeout
+                return isStillRunning && isRecent
+            }
+
+        case .failure(let error):
+            AppLogger.disk.debug("Failed to get process list: \(error.localizedDescription)")
         }
 
         // Build result from recent activity, sorted by total activity
-        var result = recentProcessActivity.values
+        let result = recentProcessActivity.values
             .sorted { $0.totalActivity > $1.totalActivity }
             .prefix(5)
             .map { activity in

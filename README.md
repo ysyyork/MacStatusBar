@@ -29,6 +29,16 @@ An open-source system monitoring status bar app for macOS users.
 - Read/Write activity indicators
 - Per-process disk I/O activity
 
+### Robustness Features
+- **Structured Logging**: Uses Apple's `os_log` for debugging via Console.app (filter by "com.macstatusbar")
+- **Process Timeout**: External commands (system_profiler, ioreg, ps) have configurable timeouts to prevent hangs
+- **Network Resilience**: WAN IP fetching includes retry with exponential backoff (1s, 2s, 4s) and fallback services (ipify.org -> ipinfo.io -> icanhazip.com)
+- **Network Reachability**: NWPathMonitor detects connectivity changes to avoid unnecessary requests when offline
+- **Health Monitoring**: Auto-recovery when monitors become stale (restarts after 30s of no updates)
+- **Rate Limiting**: Prevents excessive updates under high system load (min 0.5s between updates)
+- **Data Validation**: Clamps percentages (0-100%), speeds (max 10 Gbps), and handles counter wraparound
+- **Graceful Timer Cleanup**: Proper deinit handling prevents race conditions on app termination
+
 ## Screenshots
 
 ### Status Bar
@@ -94,7 +104,9 @@ Sources/
 │   ├── SettingsView.swift
 │   └── SharedViews.swift
 └── Utilities/
-    └── Formatters.swift
+    ├── Formatters.swift
+    ├── Logger.swift
+    └── ProcessRunner.swift
 ```
 
 ## License

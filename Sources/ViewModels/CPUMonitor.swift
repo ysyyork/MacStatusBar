@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import Combine
+import os.log
 
 // MARK: - Data Models
 
@@ -42,8 +43,17 @@ final class CPUMonitor: ObservableObject {
 
     private var timer: DispatchSourceTimer?
     private var processTimer: DispatchSourceTimer?
+    private var healthCheckTimer: DispatchSourceTimer?
     private var previousCPUInfo: host_cpu_load_info?
     private var cachedProcessorName: String?
+
+    // Health check properties
+    private var lastSuccessfulUpdate: Date?
+    private let healthCheckInterval: TimeInterval = 30.0
+
+    // Rate limiting
+    private var lastUpdateTime: Date?
+    private let minUpdateInterval: TimeInterval = 0.5
 
     // MARK: - Initialization
 
@@ -51,13 +61,56 @@ final class CPUMonitor: ObservableObject {
         fetchProcessorNameAsync()
         startMonitoring()
         startProcessMonitoring()
+        startHealthCheckTimer()
     }
 
     deinit {
+        timer?.setEventHandler(handler: nil)
         timer?.cancel()
         timer = nil
+        processTimer?.setEventHandler(handler: nil)
         processTimer?.cancel()
         processTimer = nil
+        healthCheckTimer?.setEventHandler(handler: nil)
+        healthCheckTimer?.cancel()
+        healthCheckTimer = nil
+    }
+
+    // MARK: - Health Check
+
+    private func startHealthCheckTimer() {
+        let queue = DispatchQueue(label: "com.macstatusbar.cpu.health", qos: .utility)
+        healthCheckTimer = DispatchSource.makeTimerSource(queue: queue)
+        healthCheckTimer?.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval)
+        healthCheckTimer?.setEventHandler { [weak self] in
+            self?.checkHealth()
+        }
+        healthCheckTimer?.resume()
+    }
+
+    private func checkHealth() {
+        if let lastUpdate = lastSuccessfulUpdate,
+           Date().timeIntervalSince(lastUpdate) > healthCheckInterval {
+            AppLogger.cpu.warning("CPU monitor stale, restarting...")
+            restartMonitoring()
+        }
+    }
+
+    private func restartMonitoring() {
+        timer?.setEventHandler(handler: nil)
+        timer?.cancel()
+        timer = nil
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.startMonitoring()
+        }
+    }
+
+    // MARK: - Rate Limiting
+
+    private func shouldUpdate() -> Bool {
+        guard let last = lastUpdateTime else { return true }
+        return Date().timeIntervalSince(last) >= minUpdateInterval
     }
 
     // MARK: - Processor Name
@@ -89,27 +142,23 @@ final class CPUMonitor: ObservableObject {
     }
 
     private func getAppleSiliconName() -> String {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
-        task.arguments = ["SPHardwareDataType", "-json"]
+        let result = ProcessRunner.run(
+            executable: "/usr/sbin/system_profiler",
+            arguments: ["SPHardwareDataType", "-json"],
+            timeout: 10.0
+        )
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        switch result {
+        case .success(let output):
+            if let data = output.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let hardware = json["SPHardwareDataType"] as? [[String: Any]],
                let first = hardware.first,
                let chipType = first["chip_type"] as? String {
                 return chipType
             }
-        } catch {
-            // Silently fail
+        case .failure(let error):
+            AppLogger.cpu.error("Failed to get processor name: \(error.localizedDescription)")
         }
         return "Apple Silicon"
     }
@@ -124,6 +173,8 @@ final class CPUMonitor: ObservableObject {
             self?.updateStats()
         }
         timer?.resume()
+        lastSuccessfulUpdate = Date()
+        AppLogger.cpu.debug("CPU monitoring started")
     }
 
     private func startProcessMonitoring() {
@@ -139,6 +190,8 @@ final class CPUMonitor: ObservableObject {
     // MARK: - Stats Update
 
     private func updateStats() {
+        guard shouldUpdate() else { return }
+
         let cpuUsage = getCPUUsage()
         let temp = getCPUTemperature()
         let load = getLoadAverage()
@@ -175,6 +228,9 @@ final class CPUMonitor: ObservableObject {
             self.loadHistory.append(load.0)
             self.peakLoad = max(self.peakLoad, load.0)
         }
+
+        lastUpdateTime = Date()
+        lastSuccessfulUpdate = Date()
     }
 
     // MARK: - CPU Usage
@@ -191,6 +247,7 @@ final class CPUMonitor: ObservableObject {
         }
 
         guard result == KERN_SUCCESS else {
+            AppLogger.cpu.error("Failed to get CPU load info: kern_return \(result)")
             return (0, 0, 100)
         }
 
@@ -210,10 +267,11 @@ final class CPUMonitor: ObservableObject {
         let prevIdle = previous.cpu_ticks.2
         let prevNice = previous.cpu_ticks.3
 
-        let userDiff = Double(Int64(user) - Int64(prevUser))
-        let systemDiff = Double(Int64(system) - Int64(prevSystem))
-        let idleDiff = Double(Int64(idle) - Int64(prevIdle))
-        let niceDiff = Double(Int64(nice) - Int64(prevNice))
+        // Handle counter wraparound
+        let userDiff = user >= prevUser ? Double(user - prevUser) : Double(user)
+        let systemDiff = system >= prevSystem ? Double(system - prevSystem) : Double(system)
+        let idleDiff = idle >= prevIdle ? Double(idle - prevIdle) : Double(idle)
+        let niceDiff = nice >= prevNice ? Double(nice - prevNice) : Double(nice)
 
         let totalDiff = userDiff + systemDiff + idleDiff + niceDiff
 
@@ -223,11 +281,12 @@ final class CPUMonitor: ObservableObject {
             return (0, 0, 100)
         }
 
-        let userPercent = (userDiff + niceDiff) / totalDiff * 100
-        let systemPercent = systemDiff / totalDiff * 100
-        let idlePercent = idleDiff / totalDiff * 100
+        // Calculate percentages and clamp to valid range
+        let userPercent = min(100, max(0, (userDiff + niceDiff) / totalDiff * 100))
+        let systemPercent = min(100, max(0, systemDiff / totalDiff * 100))
+        let idlePercent = min(100, max(0, idleDiff / totalDiff * 100))
 
-        return (max(0, userPercent), max(0, systemPercent), max(0, idlePercent))
+        return (userPercent, systemPercent, idlePercent)
     }
 
     // MARK: - CPU Temperature
@@ -256,7 +315,11 @@ final class CPUMonitor: ObservableObject {
     private func getLoadAverage() -> (Double, Double, Double) {
         var loadAvg = [Double](repeating: 0, count: 3)
         getloadavg(&loadAvg, 3)
-        return (loadAvg[0], loadAvg[1], loadAvg[2])
+        // Clamp to reasonable values (0-1000)
+        let load1 = min(1000, max(0, loadAvg[0]))
+        let load5 = min(1000, max(0, loadAvg[1]))
+        let load15 = min(1000, max(0, loadAvg[2]))
+        return (load1, load5, load15)
     }
 
     // MARK: - Uptime
@@ -269,8 +332,13 @@ final class CPUMonitor: ObservableObject {
         if sysctl(&mib, 2, &boottime, &size, nil, 0) != -1 {
             let now = Date().timeIntervalSince1970
             let boot = Double(boottime.tv_sec)
-            return now - boot
+            let uptime = now - boot
+            // Validate: uptime should be positive and less than 10 years
+            if uptime > 0 && uptime < 315_360_000 {
+                return uptime
+            }
         }
+        AppLogger.cpu.debug("Failed to get uptime")
         return 0
     }
 
@@ -283,123 +351,119 @@ final class CPUMonitor: ObservableObject {
     }
 
     private func getGPUUsageViaIOKit() -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, memoryTotal: UInt64, name: String) {
-        // Try to get GPU stats from ioreg
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
-        task.arguments = ["-r", "-c", "IOAccelerator"]
+        let result = ProcessRunner.run(
+            executable: "/usr/sbin/ioreg",
+            arguments: ["-r", "-c", "IOAccelerator"],
+            timeout: 5.0
+        )
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
+        switch result {
+        case .success(let output):
+            return parseGPUOutput(output)
+        case .failure(let error):
+            AppLogger.cpu.debug("Failed to get GPU stats: \(error.localizedDescription)")
+            return (0, 0, 0, 0, "GPU")
+        }
+    }
 
-        do {
-            try task.run()
-            task.waitUntilExit()
+    private func parseGPUOutput(_ output: String) -> (usage: Double, memoryPercent: Double, memoryBytes: UInt64, memoryTotal: UInt64, name: String) {
+        var gpuUsage: Double = 0
+        var gpuMemoryUsed: UInt64 = 0
+        var gpuMemoryTotal: UInt64 = 0
+        var gpuName = "GPU"
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                var gpuUsage: Double = 0
-                var gpuMemoryUsed: UInt64 = 0
-                var gpuMemoryTotal: UInt64 = 0
-                var gpuName = "GPU"
-
-                // Try to get GPU name from "model" field (e.g., "Apple M3 Max")
-                if let range = output.range(of: "\"model\" = \"") {
-                    let startIndex = range.upperBound
-                    if let endIndex = output[startIndex...].firstIndex(of: "\"") {
-                        gpuName = String(output[startIndex..<endIndex])
-                    }
-                }
-                // Fallback: try IOClass for discrete GPUs (e.g., AMD, NVIDIA)
-                if gpuName == "GPU", let range = output.range(of: "\"IOClass\" = \"") {
-                    let startIndex = range.upperBound
-                    if let endIndex = output[startIndex...].firstIndex(of: "\"") {
-                        let ioClass = String(output[startIndex..<endIndex])
-                        if ioClass.contains("AMD") {
-                            gpuName = "AMD GPU"
-                        } else if ioClass.contains("NVIDIA") || ioClass.contains("GeForce") {
-                            gpuName = "NVIDIA GPU"
-                        } else if ioClass.contains("Intel") {
-                            gpuName = "Intel GPU"
-                        }
-                    }
-                }
-
-                // Parse Device Utilization % from PerformanceStatistics
-                if let range = output.range(of: "\"Device Utilization %\"=") {
-                    let startIndex = range.upperBound
-                    let remaining = output[startIndex...]
-                    var numStr = ""
-                    for char in remaining {
-                        if char.isNumber {
-                            numStr.append(char)
-                        } else if !numStr.isEmpty {
-                            break
-                        }
-                    }
-                    if let value = Double(numStr) {
-                        gpuUsage = value
-                    }
-                }
-
-                // Parse VRAM used (in bytes) - for discrete GPUs
-                if let range = output.range(of: "\"VRAM,totalMB\" = ") {
-                    let startIndex = range.upperBound
-                    let endIndex = output[startIndex...].firstIndex(of: "\n") ?? output.endIndex
-                    let valueStr = String(output[startIndex..<endIndex]).trimmingCharacters(in: .whitespaces)
-                    if let value = UInt64(valueStr) {
-                        gpuMemoryTotal = value * 1024 * 1024
-                    }
-                }
-
-                if let range = output.range(of: "\"VRAM,freeMB\" = ") {
-                    let startIndex = range.upperBound
-                    let endIndex = output[startIndex...].firstIndex(of: "\n") ?? output.endIndex
-                    let valueStr = String(output[startIndex..<endIndex]).trimmingCharacters(in: .whitespaces)
-                    if let value = UInt64(valueStr) {
-                        let freeMemory = value * 1024 * 1024
-                        if gpuMemoryTotal > freeMemory {
-                            gpuMemoryUsed = gpuMemoryTotal - freeMemory
-                        }
-                    }
-                }
-
-                // For Apple Silicon - parse "In use system memory" from PerformanceStatistics
-                // This is the active GPU memory being used
-                if let range = output.range(of: "\"In use system memory\"=") {
-                    let startIndex = range.upperBound
-                    let remaining = output[startIndex...]
-                    var numStr = ""
-                    for char in remaining {
-                        if char.isNumber {
-                            numStr.append(char)
-                        } else if !numStr.isEmpty {
-                            break
-                        }
-                    }
-                    if let memValue = UInt64(numStr) {
-                        gpuMemoryUsed = memValue
-                    }
-                }
-
-                // For Apple Silicon (no dedicated VRAM), use system RAM as reference
-                if gpuMemoryTotal == 0 && gpuMemoryUsed > 0 {
-                    gpuMemoryTotal = ProcessInfo.processInfo.physicalMemory
-                }
-
-                // Calculate memory percentage
-                var memPercent: Double = 0
-                if gpuMemoryTotal > 0 {
-                    memPercent = Double(gpuMemoryUsed) / Double(gpuMemoryTotal) * 100
-                }
-
-                return (gpuUsage, memPercent, gpuMemoryUsed, gpuMemoryTotal, gpuName)
+        // Try to get GPU name from "model" field (e.g., "Apple M3 Max")
+        if let range = output.range(of: "\"model\" = \"") {
+            let startIndex = range.upperBound
+            if let endIndex = output[startIndex...].firstIndex(of: "\"") {
+                gpuName = String(output[startIndex..<endIndex])
             }
-        } catch {
-            // Silently fail
+        }
+        // Fallback: try IOClass for discrete GPUs (e.g., AMD, NVIDIA)
+        if gpuName == "GPU", let range = output.range(of: "\"IOClass\" = \"") {
+            let startIndex = range.upperBound
+            if let endIndex = output[startIndex...].firstIndex(of: "\"") {
+                let ioClass = String(output[startIndex..<endIndex])
+                if ioClass.contains("AMD") {
+                    gpuName = "AMD GPU"
+                } else if ioClass.contains("NVIDIA") || ioClass.contains("GeForce") {
+                    gpuName = "NVIDIA GPU"
+                } else if ioClass.contains("Intel") {
+                    gpuName = "Intel GPU"
+                }
+            }
         }
 
-        return (0, 0, 0, 0, "GPU")
+        // Parse Device Utilization % from PerformanceStatistics
+        if let range = output.range(of: "\"Device Utilization %\"=") {
+            let startIndex = range.upperBound
+            let remaining = output[startIndex...]
+            var numStr = ""
+            for char in remaining {
+                if char.isNumber {
+                    numStr.append(char)
+                } else if !numStr.isEmpty {
+                    break
+                }
+            }
+            if let value = Double(numStr) {
+                // Clamp to valid percentage
+                gpuUsage = min(100, max(0, value))
+            }
+        }
+
+        // Parse VRAM used (in bytes) - for discrete GPUs
+        if let range = output.range(of: "\"VRAM,totalMB\" = ") {
+            let startIndex = range.upperBound
+            let endIndex = output[startIndex...].firstIndex(of: "\n") ?? output.endIndex
+            let valueStr = String(output[startIndex..<endIndex]).trimmingCharacters(in: .whitespaces)
+            if let value = UInt64(valueStr) {
+                gpuMemoryTotal = value * 1024 * 1024
+            }
+        }
+
+        if let range = output.range(of: "\"VRAM,freeMB\" = ") {
+            let startIndex = range.upperBound
+            let endIndex = output[startIndex...].firstIndex(of: "\n") ?? output.endIndex
+            let valueStr = String(output[startIndex..<endIndex]).trimmingCharacters(in: .whitespaces)
+            if let value = UInt64(valueStr) {
+                let freeMemory = value * 1024 * 1024
+                if gpuMemoryTotal > freeMemory {
+                    gpuMemoryUsed = gpuMemoryTotal - freeMemory
+                }
+            }
+        }
+
+        // For Apple Silicon - parse "In use system memory" from PerformanceStatistics
+        // This is the active GPU memory being used
+        if let range = output.range(of: "\"In use system memory\"=") {
+            let startIndex = range.upperBound
+            let remaining = output[startIndex...]
+            var numStr = ""
+            for char in remaining {
+                if char.isNumber {
+                    numStr.append(char)
+                } else if !numStr.isEmpty {
+                    break
+                }
+            }
+            if let memValue = UInt64(numStr) {
+                gpuMemoryUsed = memValue
+            }
+        }
+
+        // For Apple Silicon (no dedicated VRAM), use system RAM as reference
+        if gpuMemoryTotal == 0 && gpuMemoryUsed > 0 {
+            gpuMemoryTotal = ProcessInfo.processInfo.physicalMemory
+        }
+
+        // Calculate memory percentage and clamp to valid range
+        var memPercent: Double = 0
+        if gpuMemoryTotal > 0 {
+            memPercent = min(100, max(0, Double(gpuMemoryUsed) / Double(gpuMemoryTotal) * 100))
+        }
+
+        return (gpuUsage, memPercent, gpuMemoryUsed, gpuMemoryTotal, gpuName)
     }
 
     // MARK: - Process Stats
@@ -415,50 +479,46 @@ final class CPUMonitor: ObservableObject {
     private func getTopProcesses() -> [ProcessCPUUsage] {
         var result: [ProcessCPUUsage] = []
 
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/ps")
-        task.arguments = ["-Aceo", "pid,pcpu,comm", "-r"]
+        let runResult = ProcessRunner.run(
+            executable: "/bin/ps",
+            arguments: ["-Aceo", "pid,pcpu,comm", "-r"],
+            timeout: 5.0
+        )
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
+        switch runResult {
+        case .success(let output):
+            let lines = output.components(separatedBy: "\n")
+            var count = 0
 
-        do {
-            try task.run()
-            task.waitUntilExit()
+            for line in lines {
+                if count >= 5 { break }
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                let lines = output.components(separatedBy: "\n")
-                var count = 0
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty || trimmed.hasPrefix("PID") { continue }
 
-                for line in lines {
-                    if count >= 5 { break }
+                let components = trimmed.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+                if components.count >= 3 {
+                    if let pid = Int32(components[0]),
+                       let cpu = Double(components[1]) {
+                        let name = String(components[2])
+                        let processName = (name as NSString).lastPathComponent
 
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.isEmpty || trimmed.hasPrefix("PID") { continue }
+                        // Clamp CPU usage to valid range (0-800% for 8-core)
+                        let clampedCPU = min(800, max(0, cpu))
 
-                    let components = trimmed.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
-                    if components.count >= 3 {
-                        if let pid = Int32(components[0]),
-                           let cpu = Double(components[1]) {
-                            let name = String(components[2])
-                            let processName = (name as NSString).lastPathComponent
-
-                            if cpu > 0 {
-                                result.append(ProcessCPUUsage(
-                                    name: processName,
-                                    cpuUsage: cpu,
-                                    pid: pid
-                                ))
-                                count += 1
-                            }
+                        if clampedCPU > 0 {
+                            result.append(ProcessCPUUsage(
+                                name: processName,
+                                cpuUsage: clampedCPU,
+                                pid: pid
+                            ))
+                            count += 1
                         }
                     }
                 }
             }
-        } catch {
-            // Silently fail
+        case .failure(let error):
+            AppLogger.cpu.debug("Failed to get top processes: \(error.localizedDescription)")
         }
 
         return result
@@ -483,6 +543,7 @@ final class CPUMonitor: ObservableObject {
         }
 
         guard result == KERN_SUCCESS else {
+            AppLogger.cpu.error("Failed to get memory info: kern_return \(result)")
             // Fallback: try HOST_VM_INFO (32-bit) for older systems
             return getMemoryInfoFallback(totalMemory: totalMemory)
         }
@@ -493,7 +554,13 @@ final class CPUMonitor: ObservableObject {
         let compressed = UInt64(stats.compressor_page_count) * pageSize
 
         // Used memory = active + wired + compressed (excluding speculative/cached)
-        let used = active + wired + compressed
+        var used = active + wired + compressed
+
+        // Validate: used should not exceed total
+        if used > totalMemory {
+            AppLogger.cpu.warning("Memory used (\(used)) exceeds total (\(totalMemory)), clamping")
+            used = totalMemory
+        }
 
         return (used, totalMemory)
     }
@@ -510,6 +577,7 @@ final class CPUMonitor: ObservableObject {
         }
 
         guard result == KERN_SUCCESS else {
+            AppLogger.cpu.error("Failed to get memory info (fallback): kern_return \(result)")
             return (0, totalMemory)
         }
 
@@ -517,7 +585,12 @@ final class CPUMonitor: ObservableObject {
         let active = UInt64(stats.active_count) * pageSize
         let wired = UInt64(stats.wire_count) * pageSize
 
-        let used = active + wired
+        var used = active + wired
+
+        // Validate: used should not exceed total
+        if used > totalMemory {
+            used = totalMemory
+        }
 
         return (used, totalMemory)
     }
@@ -531,9 +604,13 @@ final class CPUMonitor: ObservableObject {
         let result = sysctlbyname("vm.swapusage", &swapUsage, &size, nil, 0)
 
         guard result == 0 else {
+            AppLogger.cpu.debug("Failed to get swap info")
             return (0, 0)
         }
 
-        return (swapUsage.xsu_used, swapUsage.xsu_total)
+        // Validate: used should not exceed total
+        let used = min(swapUsage.xsu_used, swapUsage.xsu_total)
+
+        return (used, swapUsage.xsu_total)
     }
 }

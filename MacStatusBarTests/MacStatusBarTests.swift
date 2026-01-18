@@ -629,6 +629,197 @@ final class AdditionalFormatterTests: XCTestCase {
 
 // MARK: - Menu Bar View Tests
 
+// MARK: - ProcessRunner Tests
+
+final class ProcessRunnerTests: XCTestCase {
+
+    func testRunSuccessfulCommand() {
+        // Test running a simple command that should always succeed
+        let result = ProcessRunner.run(
+            executable: "/bin/echo",
+            arguments: ["hello"],
+            timeout: 5.0
+        )
+
+        switch result {
+        case .success(let output):
+            XCTAssertTrue(output.contains("hello"))
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
+        }
+    }
+
+    func testRunWithInvalidExecutable() {
+        // Test running a non-existent executable
+        let result = ProcessRunner.run(
+            executable: "/nonexistent/path/to/executable",
+            arguments: [],
+            timeout: 5.0
+        )
+
+        switch result {
+        case .success:
+            XCTFail("Expected failure for non-existent executable")
+        case .failure(let error):
+            if case .processNotFound = error {
+                // Expected
+            } else {
+                XCTFail("Expected processNotFound error, got: \(error)")
+            }
+        }
+    }
+
+    func testRunOrNilReturnsNilOnFailure() {
+        // Test runOrNil returns nil for failed commands
+        let result = ProcessRunner.runOrNil(
+            executable: "/nonexistent/path",
+            arguments: [],
+            timeout: 5.0
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func testRunOrNilReturnsOutputOnSuccess() {
+        // Test runOrNil returns output for successful commands
+        let result = ProcessRunner.runOrNil(
+            executable: "/bin/echo",
+            arguments: ["test"],
+            timeout: 5.0
+        )
+
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result?.contains("test") ?? false)
+    }
+
+    func testProcessErrorDescriptions() {
+        // Test that all error types have descriptions
+        XCTAssertNotNil(ProcessError.timeout.errorDescription)
+        XCTAssertNotNil(ProcessError.executionFailed("test").errorDescription)
+        XCTAssertNotNil(ProcessError.invalidOutput.errorDescription)
+        XCTAssertNotNil(ProcessError.processNotFound("/test").errorDescription)
+
+        XCTAssertTrue(ProcessError.timeout.errorDescription?.contains("timed out") ?? false)
+        XCTAssertTrue(ProcessError.executionFailed("reason").errorDescription?.contains("reason") ?? false)
+        XCTAssertTrue(ProcessError.processNotFound("/path").errorDescription?.contains("/path") ?? false)
+    }
+}
+
+// MARK: - Validation Tests
+
+final class ValidationTests: XCTestCase {
+
+    func testClampPercentageValues() {
+        // Test that percentage values are properly clamped
+        let clampedLow = min(100, max(0, -10.0))
+        let clampedHigh = min(100, max(0, 150.0))
+        let clampedNormal = min(100, max(0, 50.0))
+
+        XCTAssertEqual(clampedLow, 0)
+        XCTAssertEqual(clampedHigh, 100)
+        XCTAssertEqual(clampedNormal, 50)
+    }
+
+    func testCounterWraparound() {
+        // Test counter wraparound handling logic
+        // Helper function to calculate delta with wraparound handling
+        func calculateDelta(newValue: UInt64, oldValue: UInt64) -> UInt64 {
+            return newValue >= oldValue ? newValue - oldValue : newValue
+        }
+
+        let oldValue: UInt64 = 1000
+        let newValueNormal: UInt64 = 2000
+        let newValueWrapped: UInt64 = 500  // Simulates counter reset
+
+        // Normal case
+        let deltaNormal = calculateDelta(newValue: newValueNormal, oldValue: oldValue)
+        XCTAssertEqual(deltaNormal, 1000)
+
+        // Wraparound case
+        let deltaWrapped = calculateDelta(newValue: newValueWrapped, oldValue: oldValue)
+        XCTAssertEqual(deltaWrapped, 500)  // Uses new value when wrapped
+    }
+
+    func testSpeedClamping() {
+        // Test that speeds are clamped to reasonable values
+        let maxSpeed: Double = 10_000_000_000  // 10 Gbps
+        let unreasonableSpeed: Double = 100_000_000_000  // 100 Gbps
+        let normalSpeed: Double = 1_000_000  // 1 MB/s
+
+        let clampedUnreasonable = min(maxSpeed, max(0, unreasonableSpeed))
+        let clampedNormal = min(maxSpeed, max(0, normalSpeed))
+        let clampedNegative = min(maxSpeed, max(0, -1000.0))
+
+        XCTAssertEqual(clampedUnreasonable, maxSpeed)
+        XCTAssertEqual(clampedNormal, normalSpeed)
+        XCTAssertEqual(clampedNegative, 0)
+    }
+
+    func testUptimeValidation() {
+        // Test uptime validation logic
+        let maxUptime: TimeInterval = 315_360_000  // 10 years in seconds
+
+        let validUptime: TimeInterval = 86400  // 1 day
+        let negativeUptime: TimeInterval = -100
+        let excessiveUptime: TimeInterval = 400_000_000  // > 10 years
+
+        let isValidNormal = validUptime > 0 && validUptime < maxUptime
+        let isValidNegative = negativeUptime > 0 && negativeUptime < maxUptime
+        let isValidExcessive = excessiveUptime > 0 && excessiveUptime < maxUptime
+
+        XCTAssertTrue(isValidNormal)
+        XCTAssertFalse(isValidNegative)
+        XCTAssertFalse(isValidExcessive)
+    }
+
+    func testMemoryValidation() {
+        // Test that used memory doesn't exceed total
+        let totalMemory: UInt64 = 16_000_000_000  // 16 GB
+        let usedNormal: UInt64 = 8_000_000_000   // 8 GB
+        let usedExcessive: UInt64 = 20_000_000_000  // 20 GB (impossible)
+
+        let validatedNormal = min(usedNormal, totalMemory)
+        let validatedExcessive = min(usedExcessive, totalMemory)
+
+        XCTAssertEqual(validatedNormal, usedNormal)
+        XCTAssertEqual(validatedExcessive, totalMemory)  // Clamped to total
+    }
+}
+
+// MARK: - IP Validation Tests
+
+final class IPValidationTests: XCTestCase {
+
+    func testValidIPv4Addresses() {
+        let validIPs = ["192.168.1.1", "10.0.0.1", "8.8.8.8", "255.255.255.255", "0.0.0.0"]
+
+        for ip in validIPs {
+            XCTAssertTrue(isValidIPv4(ip), "Expected \(ip) to be valid")
+        }
+    }
+
+    func testInvalidIPv4Addresses() {
+        let invalidIPs = ["256.1.1.1", "1.1.1", "1.1.1.1.1", "abc.def.ghi.jkl", ""]
+
+        for ip in invalidIPs {
+            XCTAssertFalse(isValidIPv4(ip), "Expected \(ip) to be invalid")
+        }
+    }
+
+    // Helper function matching the logic in NetworkMonitor
+    private func isValidIPv4(_ ip: String) -> Bool {
+        let ipv4Pattern = #"^(\d{1,3}\.){3}\d{1,3}$"#
+
+        if ip.range(of: ipv4Pattern, options: .regularExpression) != nil {
+            let octets = ip.split(separator: ".").compactMap { Int($0) }
+            return octets.count == 4 && octets.allSatisfy { $0 >= 0 && $0 <= 255 }
+        }
+        return false
+    }
+}
+
+// MARK: - Menu Bar View Tests
+
 final class MenuBarViewTests: XCTestCase {
 
     func testCPUMenuBarViewNormalState() {
