@@ -175,28 +175,11 @@ struct LegendItem: View {
 
 // MARK: - Menu Footer Buttons (Settings + Quit)
 
-/// Footer buttons for menu bar dropdowns containing Settings and Quit buttons.
-///
-/// IMPORTANT: The Settings button MUST use `@Environment(\.openSettings)` to open Settings.
-/// DO NOT use `NSApp.sendAction` with `showSettingsWindow:` or `showPreferencesWindow:` selectors
-/// as this causes runtime errors: "Please use SettingsLink for opening the Settings scene."
-///
-/// We use a custom Button with `openSettings()` instead of `SettingsLink` because:
-/// 1. We need to call `NSApp.activate(ignoringOtherApps: true)` first to ensure the
-///    Settings window comes to front when clicked multiple times.
-/// 2. `SettingsLink` alone doesn't activate the app, causing the window to stay hidden
-///    behind other windows on subsequent clicks.
 struct MenuFooterButtons: View {
-    @Environment(\.openSettings) private var openSettings
-
     var body: some View {
         VStack(spacing: 0) {
-            // Settings Button - MUST use openSettings() environment action
-            // See struct documentation above for why this approach is required
-            Button(action: {
-                NSApp.activate(ignoringOtherApps: true)
-                openSettings()
-            }) {
+            // Settings Button using SettingsLink
+            SettingsLink {
                 HStack {
                     Text("Settings...")
                         .foregroundColor(.primary)

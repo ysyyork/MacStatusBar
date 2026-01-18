@@ -428,16 +428,9 @@ final class MenuFooterButtonsTests: XCTestCase {
         XCTAssertNotNil(footerButtons)
     }
 
-    func testSettingsButtonUsesEnvironmentOpenSettings() {
-        // IMPORTANT: The Settings button MUST use @Environment(\.openSettings) to open Settings.
-        // DO NOT use NSApp.sendAction with showSettingsWindow:/showPreferencesWindow: selectors
-        // as this causes runtime errors: "Please use SettingsLink for opening the Settings scene."
-        //
-        // The correct implementation is:
-        //   @Environment(\.openSettings) private var openSettings
-        //   Button(action: { NSApp.activate(ignoringOtherApps: true); openSettings() }) { ... }
-        //
-        // This test verifies the view can be instantiated with the environment dependency.
+    func testSettingsLinkIsUsed() {
+        // MenuFooterButtons uses SwiftUI SettingsLink component
+        // This test verifies the view can be instantiated
         let footerButtons = MenuFooterButtons()
         XCTAssertNotNil(footerButtons.body)
     }
