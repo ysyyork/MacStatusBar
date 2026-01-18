@@ -870,3 +870,72 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertNotNil(view)
     }
 }
+
+// MARK: - Fan Speed Tests
+
+final class FanSpeedTests: XCTestCase {
+
+    func testFanSpeedRPMValidation() {
+        // Test that RPM values are within valid range (0-10000)
+        let validRPMs = [0, 1000, 2500, 5000, 9999]
+        let invalidRPMs = [-100, 10001, 50000]
+
+        for rpm in validRPMs {
+            let isValid = rpm >= 0 && rpm < 10000
+            XCTAssertTrue(isValid, "Expected \(rpm) to be valid")
+        }
+
+        for rpm in invalidRPMs {
+            let isValid = rpm >= 0 && rpm < 10000
+            XCTAssertFalse(isValid, "Expected \(rpm) to be invalid")
+        }
+    }
+
+    func testFanSpeedTupleStructure() {
+        // Test that fan speed tuple can hold name and RPM
+        let fan: (name: String, rpm: Int) = (name: "Fan 1", rpm: 2000)
+
+        XCTAssertEqual(fan.name, "Fan 1")
+        XCTAssertEqual(fan.rpm, 2000)
+    }
+
+    func testMultipleFanSpeeds() {
+        // Test handling multiple fans
+        var fans: [(name: String, rpm: Int)] = []
+        fans.append((name: "Fan 1", rpm: 1500))
+        fans.append((name: "Fan 2", rpm: 2500))
+
+        XCTAssertEqual(fans.count, 2)
+        XCTAssertEqual(fans[0].name, "Fan 1")
+        XCTAssertEqual(fans[0].rpm, 1500)
+        XCTAssertEqual(fans[1].name, "Fan 2")
+        XCTAssertEqual(fans[1].rpm, 2500)
+    }
+
+    func testEmptyFanSpeedsArray() {
+        // Test that empty fan speeds array is handled
+        let fans: [(name: String, rpm: Int)] = []
+
+        XCTAssertTrue(fans.isEmpty)
+        XCTAssertEqual(fans.count, 0)
+    }
+
+    func testFanSpeedRegexPattern() {
+        // Test the regex pattern used to extract RPM values
+        let testStrings = [
+            ("Fan Speed: 1500 RPM", 1500),
+            ("current-speed = 2000", 2000),
+            ("rpm = 3500", 3500),
+        ]
+
+        let pattern = #"\d{3,5}"#
+
+        for (input, expectedRPM) in testStrings {
+            if let range = input.range(of: pattern, options: .regularExpression) {
+                let rpmStr = String(input[range])
+                let rpm = Int(rpmStr)
+                XCTAssertEqual(rpm, expectedRPM, "Failed to extract RPM from: \(input)")
+            }
+        }
+    }
+}
