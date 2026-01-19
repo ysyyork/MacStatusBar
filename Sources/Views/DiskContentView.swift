@@ -6,6 +6,17 @@ import AppKit
 struct DiskMenuContentView: View {
     @ObservedObject var monitor: DiskMonitor
     @ObservedObject var settings: AppSettings
+    @State private var ejectError: String?
+    @State private var showingEjectError = false
+
+    private func ejectDisk(_ disk: DiskInfo) {
+        monitor.ejectDisk(mountPoint: disk.mountPoint) { success, error in
+            if !success {
+                ejectError = error ?? "Failed to eject \(disk.name)"
+                showingEjectError = true
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -17,7 +28,7 @@ struct DiskMenuContentView: View {
                 ForEach(monitor.disks) { disk in
                     // Show eject button for any disk that's not the root volume
                     let canEject = disk.mountPoint != "/"
-                    DiskItemView(disk: disk, readSpeed: monitor.totalReadSpeed, writeSpeed: monitor.totalWriteSpeed, onEject: canEject ? { monitor.ejectDisk(mountPoint: disk.mountPoint) { _, _ in } } : nil)
+                    DiskItemView(disk: disk, readSpeed: monitor.totalReadSpeed, writeSpeed: monitor.totalWriteSpeed, onEject: canEject ? { ejectDisk(disk) } : nil)
                 }
 
                 if monitor.disks.isEmpty {
@@ -39,7 +50,7 @@ struct DiskMenuContentView: View {
 
                 VStack(spacing: 8) {
                     ForEach(monitor.networkDisks) { disk in
-                        NetworkDiskItemView(disk: disk, onEject: { monitor.ejectDisk(mountPoint: disk.mountPoint) { _, _ in } })
+                        NetworkDiskItemView(disk: disk, onEject: { ejectDisk(disk) })
                     }
                 }
                 .padding(.horizontal, 16)
@@ -98,6 +109,11 @@ struct DiskMenuContentView: View {
         }
         .frame(width: 300)
         .padding(.vertical, 8)
+        .alert("Eject Failed", isPresented: $showingEjectError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(ejectError ?? "Unknown error")
+        }
     }
 }
 

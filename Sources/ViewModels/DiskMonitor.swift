@@ -66,7 +66,7 @@ final class DiskMonitor: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             let runResult = ProcessRunner.run(
                 executable: "/usr/sbin/diskutil",
-                arguments: ["unmount", mountPoint],
+                arguments: ["eject", mountPoint],
                 timeout: 30.0
             )
 

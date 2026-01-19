@@ -10,6 +10,7 @@ An open-source system monitoring status bar app for macOS users.
 
 ### Network Monitor
 - Real-time upload/download speeds
+- Green color indicator for speeds > 1 MB/s
 - Public and local IP addresses
 - Per-process network activity (top 5)
 - Speed history graph
@@ -27,6 +28,7 @@ An open-source system monitoring status bar app for macOS users.
 ### Disk Monitor
 - Local disk usage with visual bars
 - Network disk detection
+- Eject button for external and network disks
 - Read/Write activity indicators
 - Per-process disk I/O activity
 
