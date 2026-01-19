@@ -153,7 +153,12 @@ final class NetworkMonitor: ObservableObject {
         var processUsages: [ProcessNetworkUsage] = []
 
         for (name, bytes) in processBytes {
-            let prev = previousProcessBytes[name] ?? (0, 0, 0)
+            // Only calculate speed if we have a previous reading for this process
+            // This prevents showing inflated speeds for newly appeared processes
+            guard let prev = previousProcessBytes[name] else {
+                continue
+            }
+
             // Handle counter wraparound
             let downloadDelta = bytes.bytesIn >= prev.bytesIn ? bytes.bytesIn - prev.bytesIn : bytes.bytesIn
             let uploadDelta = bytes.bytesOut >= prev.bytesOut ? bytes.bytesOut - prev.bytesOut : bytes.bytesOut
@@ -161,6 +166,13 @@ final class NetworkMonitor: ObservableObject {
             // Speed per second (we poll every 2 seconds)
             let downloadSpeed = Double(downloadDelta) / 2.0
             let uploadSpeed = Double(uploadDelta) / 2.0
+
+            // Sanity check: skip if speed is unreasonably high (> 10 Gbps)
+            // This catches counter resets or measurement errors
+            let maxSpeed: Double = 10_000_000_000
+            if downloadSpeed > maxSpeed || uploadSpeed > maxSpeed {
+                continue
+            }
 
             // Only include if there's activity
             if downloadSpeed > 0 || uploadSpeed > 0 {
