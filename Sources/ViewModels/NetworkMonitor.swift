@@ -24,14 +24,6 @@ final class NetworkMonitor: ObservableObject {
     @Published var topProcesses: [ProcessNetworkUsage] = []
     @Published var isNetworkAvailable: Bool = true
 
-    private var previousBytesIn: UInt64 = 0
-    private var previousBytesOut: UInt64 = 0
-    private var previousTimestamp: Date?
-    private var initialBytesIn: UInt64 = 0
-    private var initialBytesOut: UInt64 = 0
-    private var isInitialized = false
-
-    private var timer: DispatchSourceTimer?
     private var ipRefreshTimer: DispatchSourceTimer?
     private var processTimer: DispatchSourceTimer?
     private var healthCheckTimer: DispatchSourceTimer?
@@ -47,10 +39,6 @@ final class NetworkMonitor: ObservableObject {
     private var lastSuccessfulUpdate: Date?
     private let healthCheckInterval: TimeInterval = 30.0
 
-    // Rate limiting
-    private var lastUpdateTime: Date?
-    private let minUpdateInterval: TimeInterval = 0.5
-
     // WAN IP fallback services
     private let wanIPServices = [
         "https://api.ipify.org",
@@ -63,7 +51,6 @@ final class NetworkMonitor: ObservableObject {
 
     init() {
         setupNetworkPathMonitor()
-        startMonitoring()
         refreshIPAddresses()
         startIPRefreshTimer()
         startProcessMonitoring()
@@ -71,7 +58,6 @@ final class NetworkMonitor: ObservableObject {
     }
 
     deinit {
-        stopMonitoring()
         ipRefreshTimer?.setEventHandler(handler: nil)
         ipRefreshTimer?.cancel()
         ipRefreshTimer = nil
@@ -124,17 +110,15 @@ final class NetworkMonitor: ObservableObject {
     }
 
     private func restartMonitoring() {
-        stopMonitoring()
+        // Stop process timer
+        processTimer?.setEventHandler(handler: nil)
+        processTimer?.cancel()
+        processTimer = nil
+
+        // Restart after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.startMonitoring()
+            self?.startProcessMonitoring()
         }
-    }
-
-    // MARK: - Rate Limiting
-
-    private func shouldUpdate() -> Bool {
-        guard let last = lastUpdateTime else { return true }
-        return Date().timeIntervalSince(last) >= minUpdateInterval
     }
 
     private func startProcessMonitoring() {
@@ -151,6 +135,8 @@ final class NetworkMonitor: ObservableObject {
     private func updateProcessStats() {
         let processBytes = getProcessNetworkBytes()
         var processUsages: [ProcessNetworkUsage] = []
+        var totalDownload: Double = 0
+        var totalUpload: Double = 0
 
         for (name, bytes) in processBytes {
             // Only calculate speed if we have a previous reading for this process
@@ -168,13 +154,16 @@ final class NetworkMonitor: ObservableObject {
             let uploadSpeed = Double(uploadDelta) / 2.0
 
             // Sanity check: skip if speed is unreasonably high (> 10 Gbps)
-            // This catches counter resets or measurement errors
             let maxSpeed: Double = 10_000_000_000
             if downloadSpeed > maxSpeed || uploadSpeed > maxSpeed {
                 continue
             }
 
-            // Only include if there's activity
+            // Add to totals
+            totalDownload += downloadSpeed
+            totalUpload += uploadSpeed
+
+            // Only include in process list if there's activity
             if downloadSpeed > 0 || uploadSpeed > 0 {
                 processUsages.append(ProcessNetworkUsage(
                     name: name,
@@ -191,9 +180,26 @@ final class NetworkMonitor: ObservableObject {
         }.prefix(5)
 
         previousProcessBytes = processBytes
+        lastSuccessfulUpdate = Date()
 
         DispatchQueue.main.async { [weak self] in
-            self?.topProcesses = Array(sorted)
+            guard let self = self else { return }
+            self.topProcesses = Array(sorted)
+
+            // Update total speeds from nettop data (more reliable than ifi_ibytes/ifi_obytes)
+            self.downloadSpeed = totalDownload
+            self.uploadSpeed = totalUpload
+
+            // Update session totals (accumulate bytes transferred)
+            // Speed is bytes/sec, we poll every 2 seconds
+            self.totalDownloaded += UInt64(totalDownload * 2)
+            self.totalUploaded += UInt64(totalUpload * 2)
+
+            // Update history
+            self.downloadHistory.removeFirst()
+            self.downloadHistory.append(totalDownload)
+            self.uploadHistory.removeFirst()
+            self.uploadHistory.append(totalUpload)
         }
     }
 
@@ -240,8 +246,12 @@ final class NetworkMonitor: ObservableObject {
                 // Skip system processes we don't care about
                 if processName.isEmpty || processName == "kernel_task" { continue }
 
-                let bytesIn = UInt64(components[1].trimmingCharacters(in: .whitespaces)) ?? 0
-                let bytesOut = UInt64(components[2].trimmingCharacters(in: .whitespaces)) ?? 0
+                // nettop columns: process.pid, bytes_in, bytes_out
+                // Standard convention (from process perspective):
+                // - bytes_in (col 1) = data received by process = DOWNLOAD
+                // - bytes_out (col 2) = data sent by process = UPLOAD
+                let bytesIn = UInt64(components[1].trimmingCharacters(in: .whitespaces)) ?? 0   // download
+                let bytesOut = UInt64(components[2].trimmingCharacters(in: .whitespaces)) ?? 0  // upload
 
                 // Aggregate by process name (keep first PID we see)
                 if let existing = result[processName] {
@@ -405,121 +415,4 @@ final class NetworkMonitor: ObservableObject {
         return ip.range(of: ipv6Pattern, options: .regularExpression) != nil
     }
 
-    func startMonitoring() {
-        // Get initial reading
-        let (bytesIn, bytesOut) = getNetworkBytes()
-        previousBytesIn = bytesIn
-        previousBytesOut = bytesOut
-        initialBytesIn = bytesIn
-        initialBytesOut = bytesOut
-        previousTimestamp = Date()
-        isInitialized = true
-        lastSuccessfulUpdate = Date()
-
-        // Create timer for 1-second polling
-        let queue = DispatchQueue(label: "com.networkutils.monitor", qos: .utility)
-        timer = DispatchSource.makeTimerSource(queue: queue)
-        timer?.schedule(deadline: .now() + 1, repeating: 1.0)
-        timer?.setEventHandler { [weak self] in
-            self?.updateStats()
-        }
-        timer?.resume()
-        AppLogger.network.debug("Network monitoring started")
-    }
-
-    func stopMonitoring() {
-        timer?.setEventHandler(handler: nil)
-        timer?.cancel()
-        timer = nil
-        AppLogger.network.debug("Network monitoring stopped")
-    }
-
-    private func updateStats() {
-        guard shouldUpdate() else { return }
-
-        let now = Date()
-        let (bytesIn, bytesOut) = getNetworkBytes()
-
-        guard let prevTimestamp = previousTimestamp else {
-            previousBytesIn = bytesIn
-            previousBytesOut = bytesOut
-            previousTimestamp = now
-            return
-        }
-
-        let timeDelta = now.timeIntervalSince(prevTimestamp)
-        guard timeDelta > 0 else { return }
-
-        // Calculate speeds (bytes per second) with counter wraparound handling
-        let deltaIn = bytesIn >= previousBytesIn ? bytesIn - previousBytesIn : bytesIn
-        let deltaOut = bytesOut >= previousBytesOut ? bytesOut - previousBytesOut : bytesOut
-
-        // Validate and clamp speeds to reasonable values (max 10 Gbps)
-        let maxSpeed: Double = 10_000_000_000
-        let newDownloadSpeed = min(maxSpeed, max(0, Double(deltaIn) / timeDelta))
-        let newUploadSpeed = min(maxSpeed, max(0, Double(deltaOut) / timeDelta))
-
-        // Calculate session totals with wraparound handling
-        let sessionDownloaded = bytesIn >= initialBytesIn ? bytesIn - initialBytesIn : bytesIn
-        let sessionUploaded = bytesOut >= initialBytesOut ? bytesOut - initialBytesOut : bytesOut
-
-        // Update on main thread
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.downloadSpeed = newDownloadSpeed
-            self.uploadSpeed = newUploadSpeed
-            self.totalDownloaded = sessionDownloaded
-            self.totalUploaded = sessionUploaded
-
-            // Update history (shift left, append new value)
-            self.downloadHistory.removeFirst()
-            self.downloadHistory.append(newDownloadSpeed)
-            self.uploadHistory.removeFirst()
-            self.uploadHistory.append(newUploadSpeed)
-        }
-
-        // Store for next iteration
-        previousBytesIn = bytesIn
-        previousBytesOut = bytesOut
-        previousTimestamp = now
-        lastUpdateTime = now
-        lastSuccessfulUpdate = now
-    }
-
-    private func getNetworkBytes() -> (bytesIn: UInt64, bytesOut: UInt64) {
-        var totalBytesIn: UInt64 = 0
-        var totalBytesOut: UInt64 = 0
-
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&ifaddr) == 0 else {
-            AppLogger.network.error("Failed to get network interface addresses")
-            return (0, 0)
-        }
-        defer { freeifaddrs(ifaddr) }
-
-        var ptr = ifaddr
-        while ptr != nil {
-            defer { ptr = ptr?.pointee.ifa_next }
-
-            guard let interface = ptr?.pointee else { continue }
-
-            // Only count AF_LINK (link layer) addresses which have the stats
-            guard interface.ifa_addr?.pointee.sa_family == UInt8(AF_LINK) else { continue }
-
-            // Get interface name
-            let name = String(cString: interface.ifa_name)
-
-            // Skip loopback interface
-            guard !name.hasPrefix("lo") else { continue }
-
-            // Get interface data
-            guard let data = interface.ifa_data else { continue }
-            let networkData = data.assumingMemoryBound(to: if_data.self).pointee
-
-            totalBytesIn += UInt64(networkData.ifi_ibytes)   // ibytes = input (download)
-            totalBytesOut += UInt64(networkData.ifi_obytes)  // obytes = output (upload)
-        }
-
-        return (totalBytesIn, totalBytesOut)
-    }
 }
