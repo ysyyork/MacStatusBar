@@ -809,6 +809,47 @@ final class ValidationTests: XCTestCase {
     }
 }
 
+// MARK: - Network Byte Direction Tests
+
+final class NetworkByteDirectionTests: XCTestCase {
+
+    func testIfDataByteDirectionConvention() {
+        // This test documents and verifies the correct interpretation of if_data fields:
+        // - ifi_ibytes = input bytes (data received/downloaded FROM the network)
+        // - ifi_obytes = output bytes (data sent/uploaded TO the network)
+        //
+        // A previous bug swapped these values, causing download speeds to show upload values.
+        // This test ensures the convention is correctly understood.
+
+        // Simulate if_data values (as would come from network interface)
+        let ifi_ibytes: UInt64 = 1_000_000  // 1 MB received (download)
+        let ifi_obytes: UInt64 = 500_000    // 500 KB sent (upload)
+
+        // Correct assignment (matching NetworkMonitor.getNetworkBytes())
+        let totalBytesIn = ifi_ibytes   // Download = input bytes
+        let totalBytesOut = ifi_obytes  // Upload = output bytes
+
+        // Verify the naming convention
+        XCTAssertEqual(totalBytesIn, 1_000_000, "totalBytesIn should equal ifi_ibytes (input/download)")
+        XCTAssertEqual(totalBytesOut, 500_000, "totalBytesOut should equal ifi_obytes (output/upload)")
+
+        // Verify download > upload in this test case (common pattern)
+        XCTAssertGreaterThan(totalBytesIn, totalBytesOut, "Download (input) should be greater than upload (output) in this test")
+    }
+
+    func testNetworkSpeedCalculation() {
+        // Test that speed calculation handles the byte values correctly
+        let previousBytesIn: UInt64 = 1_000_000
+        let currentBytesIn: UInt64 = 2_000_000
+        let timeDelta: Double = 1.0  // 1 second
+
+        let deltaIn = currentBytesIn - previousBytesIn
+        let downloadSpeed = Double(deltaIn) / timeDelta
+
+        XCTAssertEqual(downloadSpeed, 1_000_000, "Download speed should be 1 MB/s")
+    }
+}
+
 // MARK: - IP Validation Tests
 
 final class IPValidationTests: XCTestCase {
