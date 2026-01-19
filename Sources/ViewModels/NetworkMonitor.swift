@@ -504,8 +504,8 @@ final class NetworkMonitor: ObservableObject {
             guard let data = interface.ifa_data else { continue }
             let networkData = data.assumingMemoryBound(to: if_data.self).pointee
 
-            totalBytesIn += UInt64(networkData.ifi_obytes)
-            totalBytesOut += UInt64(networkData.ifi_ibytes)
+            totalBytesIn += UInt64(networkData.ifi_ibytes)   // ibytes = input (download)
+            totalBytesOut += UInt64(networkData.ifi_obytes)  // obytes = output (upload)
         }
 
         return (totalBytesIn, totalBytesOut)
