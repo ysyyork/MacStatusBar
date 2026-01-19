@@ -15,7 +15,9 @@ struct DiskMenuContentView: View {
             // Local Disks
             VStack(spacing: 8) {
                 ForEach(monitor.disks) { disk in
-                    DiskItemView(disk: disk, readSpeed: monitor.totalReadSpeed, writeSpeed: monitor.totalWriteSpeed)
+                    // Show eject button for any disk that's not the root volume
+                    let canEject = disk.mountPoint != "/"
+                    DiskItemView(disk: disk, readSpeed: monitor.totalReadSpeed, writeSpeed: monitor.totalWriteSpeed, onEject: canEject ? { monitor.ejectDisk(mountPoint: disk.mountPoint) { _, _ in } } : nil)
                 }
 
                 if monitor.disks.isEmpty {
@@ -37,7 +39,7 @@ struct DiskMenuContentView: View {
 
                 VStack(spacing: 8) {
                     ForEach(monitor.networkDisks) { disk in
-                        NetworkDiskItemView(disk: disk)
+                        NetworkDiskItemView(disk: disk, onEject: { monitor.ejectDisk(mountPoint: disk.mountPoint) { _, _ in } })
                     }
                 }
                 .padding(.horizontal, 16)
@@ -105,6 +107,7 @@ struct DiskItemView: View {
     let disk: DiskInfo
     let readSpeed: Double
     let writeSpeed: Double
+    var onEject: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -116,6 +119,19 @@ struct DiskItemView: View {
                 Text(disk.name)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.primary)
+
+                Spacer()
+
+                // Eject button for removable disks
+                if let onEject = onEject {
+                    Button(action: onEject) {
+                        Image(systemName: "eject.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Eject \(disk.name)")
+                }
             }
 
             // Free space / Total space
@@ -157,6 +173,7 @@ struct DiskItemView: View {
 
 struct NetworkDiskItemView: View {
     let disk: DiskInfo
+    var onEject: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -173,6 +190,17 @@ struct NetworkDiskItemView: View {
             // Small usage bar
             DiskUsageBar(usage: disk.usagePercentage)
                 .frame(width: 80)
+
+            // Eject button
+            if let onEject = onEject {
+                Button(action: onEject) {
+                    Image(systemName: "eject.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Eject \(disk.name)")
+            }
         }
     }
 }

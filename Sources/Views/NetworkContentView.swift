@@ -39,7 +39,7 @@ struct NetworkMenuContentView: View {
                         .foregroundColor(.orange)
                     Text(ByteFormatter.formatSpeed(monitor.uploadSpeed))
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(.primary)
+                        .foregroundColor(monitor.uploadSpeed > 1_000_000 ? .green : .primary)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -50,7 +50,7 @@ struct NetworkMenuContentView: View {
                         .foregroundColor(.cyan)
                     Text(ByteFormatter.formatSpeed(monitor.downloadSpeed))
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(.primary)
+                        .foregroundColor(monitor.downloadSpeed > 1_000_000 ? .green : .primary)
                 }
                 .frame(maxWidth: .infinity)
             }

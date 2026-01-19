@@ -129,6 +129,11 @@ struct NetworkMenuBarView: View {
         let showUpload = settings.networkShowUpload
         let showDownload = settings.networkShowDownload
 
+        // Check if any speed is > 1MB/s for green highlight
+        let uploadFast = uploadSpeed > 1_000_000
+        let downloadFast = downloadSpeed > 1_000_000
+        let hasFastSpeed = (showUpload && uploadFast) || (showDownload && downloadFast)
+
         // Determine layout based on what's shown
         let bothShown = showUpload && showDownload
         let width: CGFloat = 70
@@ -138,35 +143,48 @@ struct NetworkMenuBarView: View {
         image.lockFocus()
 
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
-        let textColor = NSColor.black
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: textColor
-        ]
+        let normalColor = hasFastSpeed ? NSColor.white : NSColor.black
+        let greenColor = NSColor.systemGreen
 
         if bothShown {
             // Two lines: upload on top, download below
             let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed))"
             let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed))"
 
-            let upString = NSAttributedString(string: upText, attributes: attrs)
+            let upAttrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: uploadFast ? greenColor : normalColor
+            ]
+            let downAttrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: downloadFast ? greenColor : normalColor
+            ]
+
+            let upString = NSAttributedString(string: upText, attributes: upAttrs)
             upString.draw(at: NSPoint(x: 0, y: height - 11))
 
-            let downString = NSAttributedString(string: downText, attributes: attrs)
+            let downString = NSAttributedString(string: downText, attributes: downAttrs)
             downString.draw(at: NSPoint(x: 0, y: 0))
         } else if showUpload {
             let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed))"
-            let upString = NSAttributedString(string: upText, attributes: attrs)
+            let upAttrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: uploadFast ? greenColor : normalColor
+            ]
+            let upString = NSAttributedString(string: upText, attributes: upAttrs)
             upString.draw(at: NSPoint(x: 0, y: 3))
         } else if showDownload {
             let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed))"
-            let downString = NSAttributedString(string: downText, attributes: attrs)
+            let downAttrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: downloadFast ? greenColor : normalColor
+            ]
+            let downString = NSAttributedString(string: downText, attributes: downAttrs)
             downString.draw(at: NSPoint(x: 0, y: 3))
         }
 
         image.unlockFocus()
-        image.isTemplate = true
+        image.isTemplate = !hasFastSpeed
         return image
     }
 }

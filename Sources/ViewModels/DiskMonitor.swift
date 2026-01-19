@@ -60,6 +60,31 @@ final class DiskMonitor: ObservableObject {
         disks.first?.usagePercentage ?? 0
     }
 
+    // MARK: - Disk Eject
+
+    func ejectDisk(mountPoint: String, completion: @escaping (Bool, String?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let runResult = ProcessRunner.run(
+                executable: "/usr/sbin/diskutil",
+                arguments: ["unmount", mountPoint],
+                timeout: 30.0
+            )
+
+            DispatchQueue.main.async { [weak self] in
+                switch runResult {
+                case .success(let output):
+                    AppLogger.disk.info("Ejected disk at \(mountPoint): \(output)")
+                    // Refresh disk list after successful eject
+                    self?.updateDisks()
+                    completion(true, nil)
+                case .failure(let error):
+                    AppLogger.disk.error("Failed to eject disk at \(mountPoint): \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+        }
+    }
+
     // MARK: - Private Properties
 
     private var timer: DispatchSourceTimer?

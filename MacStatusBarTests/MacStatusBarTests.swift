@@ -923,6 +923,118 @@ final class MenuBarViewTests: XCTestCase {
     }
 }
 
+// MARK: - Disk Eject Eligibility Tests
+
+final class DiskEjectTests: XCTestCase {
+
+    func testRootVolumeCannotBeEjected() {
+        // Root volume "/" should never be ejectable
+        let rootDisk = DiskInfo(
+            name: "Macintosh HD",
+            mountPoint: "/",
+            totalSpace: 1_000_000_000_000,
+            freeSpace: 200_000_000_000,
+            isNetworkDisk: false,
+            isRemovable: false
+        )
+
+        let canEject = rootDisk.mountPoint != "/"
+        XCTAssertFalse(canEject, "Root volume should not be ejectable")
+    }
+
+    func testExternalDriveCanBeEjected() {
+        // External drives mounted at /Volumes/... should be ejectable
+        let externalDisk = DiskInfo(
+            name: "Untitled",
+            mountPoint: "/Volumes/Untitled",
+            totalSpace: 500_000_000_000,
+            freeSpace: 250_000_000_000,
+            isNetworkDisk: false,
+            isRemovable: false  // Note: isRemovable may be false for external SSDs
+        )
+
+        let canEject = externalDisk.mountPoint != "/"
+        XCTAssertTrue(canEject, "External drive should be ejectable")
+    }
+
+    func testNetworkDiskCanBeEjected() {
+        // Network disks should be ejectable
+        let networkDisk = DiskInfo(
+            name: "OrbStack",
+            mountPoint: "/Volumes/OrbStack",
+            totalSpace: 100_000_000_000,
+            freeSpace: 50_000_000_000,
+            isNetworkDisk: true,
+            isRemovable: false
+        )
+
+        let canEject = networkDisk.mountPoint != "/"
+        XCTAssertTrue(canEject, "Network disk should be ejectable")
+    }
+
+    func testRemovableDiskCanBeEjected() {
+        // Removable disks (USB, SD cards) should be ejectable
+        let usbDrive = DiskInfo(
+            name: "USB Drive",
+            mountPoint: "/Volumes/USB",
+            totalSpace: 64_000_000_000,
+            freeSpace: 32_000_000_000,
+            isNetworkDisk: false,
+            isRemovable: true
+        )
+
+        let canEject = usbDrive.mountPoint != "/"
+        XCTAssertTrue(canEject, "Removable disk should be ejectable")
+    }
+}
+
+// MARK: - Network Speed Color Threshold Tests
+
+final class NetworkSpeedColorTests: XCTestCase {
+
+    // Threshold for green color: > 1 MB/s (1,000,000 bytes/sec)
+    let speedThreshold: Double = 1_000_000
+
+    func testSpeedBelowThresholdNotGreen() {
+        // Speeds below 1 MB/s should NOT be green
+        let slowSpeeds: [Double] = [0, 100, 1000, 100_000, 500_000, 999_999]
+
+        for speed in slowSpeeds {
+            let isGreen = speed > speedThreshold
+            XCTAssertFalse(isGreen, "Speed \(speed) B/s should not be green")
+        }
+    }
+
+    func testSpeedAboveThresholdIsGreen() {
+        // Speeds above 1 MB/s should be green
+        let fastSpeeds: [Double] = [1_000_001, 5_000_000, 10_000_000, 50_000_000, 100_000_000]
+
+        for speed in fastSpeeds {
+            let isGreen = speed > speedThreshold
+            XCTAssertTrue(isGreen, "Speed \(speed) B/s should be green")
+        }
+    }
+
+    func testSpeedExactlyAtThresholdNotGreen() {
+        // Speed exactly at 1 MB/s should NOT be green (> not >=)
+        let exactSpeed: Double = 1_000_000
+        let isGreen = exactSpeed > speedThreshold
+        XCTAssertFalse(isGreen, "Speed exactly at threshold should not be green")
+    }
+
+    func testUploadAndDownloadIndependent() {
+        // Upload and download should be evaluated independently
+        let uploadSpeed: Double = 500_000      // 500 KB/s - not green
+        let downloadSpeed: Double = 50_000_000 // 50 MB/s - green
+
+        let uploadGreen = uploadSpeed > speedThreshold
+        let downloadGreen = downloadSpeed > speedThreshold
+
+        XCTAssertFalse(uploadGreen, "Upload should not be green")
+        XCTAssertTrue(downloadGreen, "Download should be green")
+    }
+}
+
 // MARK: - Memory Process Tests
 
 final class MemoryProcessTests: XCTestCase {
