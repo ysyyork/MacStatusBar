@@ -55,9 +55,14 @@ final class DiskMonitor: ObservableObject {
     @Published var totalReadSpeed: Double = 0
     @Published var totalWriteSpeed: Double = 0
 
-    // Computed property for main disk usage (first/largest local disk)
+    // Computed property for system disk usage (the disk mounted at "/")
     var mainDiskUsage: Double {
-        disks.first?.usagePercentage ?? 0
+        // Always show the system disk (root partition), not the largest disk
+        if let systemDisk = disks.first(where: { $0.mountPoint == "/" }) {
+            return systemDisk.usagePercentage
+        }
+        // Fallback to first disk if no root partition found
+        return disks.first?.usagePercentage ?? 0
     }
 
     // MARK: - Disk Eject
@@ -396,8 +401,7 @@ final class DiskMonitor: ObservableObject {
     private func getTopDiskProcesses() -> [ProcessDiskUsage] {
         let now = Date()
 
-        // Use fs_usage or iotop equivalent
-        // Since fs_usage requires root, we'll use a different approach
+        // Get process list with all processes (no limit)
         let runResult = ProcessRunner.run(
             executable: "/bin/ps",
             arguments: ["-Aceo", "pid,comm"],
@@ -425,15 +429,22 @@ final class DiskMonitor: ObservableObject {
             // Get current running PIDs for cleanup
             let currentPids = Set(processes.map { $0.pid })
 
-            // Get I/O stats for each process using /proc equivalent on macOS
-            for (pid, name) in processes.prefix(100) {
+            // Get I/O stats for ALL processes (removed the .prefix(100) limit)
+            for (pid, name) in processes {
                 if let ioStats = getProcessIOStats(pid: pid) {
-                    let prev = previousProcessStats[pid] ?? (0, 0)
-                    // Handle counter wraparound
-                    let readDelta = ioStats.read >= prev.read ? ioStats.read - prev.read : ioStats.read
-                    let writeDelta = ioStats.write >= prev.write ? ioStats.write - prev.write : ioStats.write
-
+                    let prev = previousProcessStats[pid]
                     previousProcessStats[pid] = ioStats
+
+                    // Skip first measurement for new processes to avoid inflated values
+                    // proc_pid_rusage returns cumulative stats since process start,
+                    // so the first reading would treat the entire history as a 2-second delta
+                    guard let prevStats = prev else {
+                        continue
+                    }
+
+                    // Handle counter wraparound
+                    let readDelta = ioStats.read >= prevStats.read ? ioStats.read - prevStats.read : ioStats.read
+                    let writeDelta = ioStats.write >= prevStats.write ? ioStats.write - prevStats.write : ioStats.write
 
                     // Calculate speed (poll every 2s)
                     // Clamp to reasonable values (max 5 GB/s per process)
@@ -469,6 +480,9 @@ final class DiskMonitor: ObservableObject {
                 }
             }
 
+            // Clean up previousProcessStats for processes that no longer exist
+            previousProcessStats = previousProcessStats.filter { currentPids.contains($0.key) }
+
             // Remove entries for processes that no longer exist or have timed out
             recentProcessActivity = recentProcessActivity.filter { (pid, activity) in
                 // Keep if process still exists and hasn't timed out
@@ -481,9 +495,11 @@ final class DiskMonitor: ObservableObject {
             AppLogger.disk.debug("Failed to get process list: \(error.localizedDescription)")
         }
 
-        // Build result from recent activity, sorted by total activity
+        // Build result from recent activity, sorted by current speed (most active first)
+        // Only include processes with current activity
         let result = recentProcessActivity.values
-            .sorted { $0.totalActivity > $1.totalActivity }
+            .filter { $0.currentReadSpeed > 0 || $0.currentWriteSpeed > 0 }
+            .sorted { ($0.currentReadSpeed + $0.currentWriteSpeed) > ($1.currentReadSpeed + $1.currentWriteSpeed) }
             .prefix(5)
             .map { activity in
                 ProcessDiskUsage(
@@ -505,7 +521,12 @@ final class DiskMonitor: ObservableObject {
             return nil
         }
 
-        // ri_diskio_bytesread and ri_diskio_byteswritten contain disk I/O
-        return (rusageInfo.ri_diskio_bytesread, rusageInfo.ri_diskio_byteswritten)
+        // Use both disk I/O and logical writes for more accurate tracking
+        // ri_diskio_bytesread/written tracks physical disk I/O
+        // ri_logical_writes tracks logical writes which may be more accurate for buffered I/O
+        let readBytes = rusageInfo.ri_diskio_bytesread
+        let writeBytes = max(rusageInfo.ri_diskio_byteswritten, rusageInfo.ri_logical_writes)
+
+        return (readBytes, writeBytes)
     }
 }

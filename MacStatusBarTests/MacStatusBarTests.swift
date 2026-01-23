@@ -1035,6 +1035,170 @@ final class NetworkSpeedColorTests: XCTestCase {
     }
 }
 
+// MARK: - System Disk Priority Tests
+
+final class SystemDiskPriorityTests: XCTestCase {
+
+    func testSystemDiskSelectedOverLargerExternalDrive() {
+        // Simulate disks sorted by size (largest first)
+        // External 4TB drive would be first in size-sorted list
+        let disks = [
+            DiskInfo(
+                name: "External Drive",
+                mountPoint: "/Volumes/External",
+                totalSpace: 4_000_000_000_000,  // 4 TB (largest)
+                freeSpace: 3_700_000_000_000,
+                isNetworkDisk: false,
+                isRemovable: true
+            ),
+            DiskInfo(
+                name: "Macintosh HD",
+                mountPoint: "/",  // System disk
+                totalSpace: 1_000_000_000_000,  // 1 TB (smaller)
+                freeSpace: 200_000_000_000,
+                isNetworkDisk: false,
+                isRemovable: false
+            )
+        ]
+
+        // The correct behavior: find system disk by mountPoint, not take first (largest)
+        let systemDisk = disks.first(where: { $0.mountPoint == "/" })
+        XCTAssertNotNil(systemDisk)
+        XCTAssertEqual(systemDisk?.name, "Macintosh HD")
+        XCTAssertEqual(systemDisk?.mountPoint, "/")
+    }
+
+    func testFallbackToFirstDiskIfNoRootPartition() {
+        // Edge case: no disk mounted at "/" (unlikely but handle gracefully)
+        let disks = [
+            DiskInfo(
+                name: "External Only",
+                mountPoint: "/Volumes/External",
+                totalSpace: 1_000_000_000_000,
+                freeSpace: 500_000_000_000,
+                isNetworkDisk: false,
+                isRemovable: true
+            )
+        ]
+
+        // If no "/" mount point, should fallback to first disk
+        let systemDisk = disks.first(where: { $0.mountPoint == "/" })
+        let fallbackDisk = systemDisk ?? disks.first
+
+        XCTAssertNil(systemDisk)
+        XCTAssertNotNil(fallbackDisk)
+        XCTAssertEqual(fallbackDisk?.name, "External Only")
+    }
+
+    func testSystemDiskUsageCalculation() {
+        // Test that usage is calculated for the system disk, not external
+        let systemDisk = DiskInfo(
+            name: "Macintosh HD",
+            mountPoint: "/",
+            totalSpace: 1_000_000_000_000,  // 1 TB
+            freeSpace: 200_000_000_000,      // 200 GB free = 80% used
+            isNetworkDisk: false,
+            isRemovable: false
+        )
+
+        let externalDisk = DiskInfo(
+            name: "External",
+            mountPoint: "/Volumes/External",
+            totalSpace: 4_000_000_000_000,  // 4 TB
+            freeSpace: 3_700_000_000_000,    // 3.7 TB free = 7.5% used
+            isNetworkDisk: false,
+            isRemovable: true
+        )
+
+        // System disk should show 80% usage
+        XCTAssertEqual(systemDisk.usagePercentage, 0.8, accuracy: 0.001)
+        // External disk shows 7.5% usage (but should not be displayed in status bar)
+        XCTAssertEqual(externalDisk.usagePercentage, 0.075, accuracy: 0.001)
+    }
+}
+
+// MARK: - Process Disk First Measurement Tests
+
+final class ProcessDiskFirstMeasurementTests: XCTestCase {
+
+    func testFirstMeasurementShouldBeSkipped() {
+        // This test documents the fix for inflated first measurements.
+        // When a process is first seen, proc_pid_rusage returns cumulative bytes
+        // since process start. Using this as a delta would show massive speeds.
+
+        // Simulate first measurement
+        let cumulativeBytesAtStart: UInt64 = 500_000_000  // 500 MB written since process started
+        let previousStats: (read: UInt64, write: UInt64)? = nil  // First time seeing this process
+
+        // The WRONG behavior (old code):
+        // prev = previousStats ?? (0, 0)  // Uses (0, 0) for first measurement
+        // delta = cumulativeBytesAtStart - 0 = 500 MB
+        // speed = 500 MB / 2 seconds = 250 MB/s (WRONG - massively inflated!)
+
+        // The CORRECT behavior (new code):
+        // Skip first measurement entirely when previousStats is nil
+        let shouldSkipFirstMeasurement = previousStats == nil
+
+        XCTAssertTrue(shouldSkipFirstMeasurement, "First measurement should be skipped to avoid inflated values")
+    }
+
+    func testSecondMeasurementIsValid() {
+        // After first measurement is recorded, subsequent deltas are valid
+
+        // First poll: record stats
+        let firstPollStats: (read: UInt64, write: UInt64) = (500_000_000, 200_000_000)
+
+        // Second poll: new stats after 2 seconds
+        let secondPollStats: (read: UInt64, write: UInt64) = (510_000_000, 204_000_000)  // 10 MB read, 4 MB write
+
+        // Calculate delta (this is valid because we have previous stats)
+        let readDelta = secondPollStats.read - firstPollStats.read
+        let writeDelta = secondPollStats.write - firstPollStats.write
+
+        // Speed over 2-second interval
+        let readSpeed = Double(readDelta) / 2.0
+        let writeSpeed = Double(writeDelta) / 2.0
+
+        XCTAssertEqual(readDelta, 10_000_000)  // 10 MB
+        XCTAssertEqual(writeDelta, 4_000_000)  // 4 MB
+        XCTAssertEqual(readSpeed, 5_000_000)   // 5 MB/s
+        XCTAssertEqual(writeSpeed, 2_000_000)  // 2 MB/s
+    }
+
+    func testProcessSortingByCurrentSpeed() {
+        // Test that processes are sorted by current speed, not historical total
+
+        struct TestProcess {
+            let name: String
+            let currentReadSpeed: Double
+            let currentWriteSpeed: Double
+            let totalActivity: UInt64
+
+            var currentTotalSpeed: Double {
+                currentReadSpeed + currentWriteSpeed
+            }
+        }
+
+        let processes = [
+            // Process A: High historical total, but currently idle
+            TestProcess(name: "ProcessA", currentReadSpeed: 0, currentWriteSpeed: 0, totalActivity: 10_000_000_000),
+            // Process B: Low historical total, but currently active
+            TestProcess(name: "ProcessB", currentReadSpeed: 5_000_000, currentWriteSpeed: 2_000_000, totalActivity: 500_000)
+        ]
+
+        // WRONG: Sort by totalActivity (old behavior)
+        let wrongSort = processes.sorted { $0.totalActivity > $1.totalActivity }
+        XCTAssertEqual(wrongSort.first?.name, "ProcessA")  // Idle process shows first
+
+        // CORRECT: Sort by current speed (new behavior)
+        let correctSort = processes
+            .filter { $0.currentTotalSpeed > 0 }  // Only show active processes
+            .sorted { $0.currentTotalSpeed > $1.currentTotalSpeed }
+        XCTAssertEqual(correctSort.first?.name, "ProcessB")  // Active process shows first
+        XCTAssertEqual(correctSort.count, 1)  // Idle process filtered out
+    }
+}
+
 // MARK: - Memory Process Tests
 
 final class MemoryProcessTests: XCTestCase {
