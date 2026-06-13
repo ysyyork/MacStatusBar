@@ -183,8 +183,8 @@ enum SpeedUnit: String, CaseIterable {
     case megabytesPerSec = "MB/s"
 }
 
-// Custom RawRepresentable to default invalid values to .auto
-extension SpeedUnit: RawRepresentable {
+// Custom init?(rawValue:) to default invalid stored values to .auto instead of nil
+extension SpeedUnit {
     init?(rawValue: String) {
         switch rawValue {
         case "Auto": self = .auto

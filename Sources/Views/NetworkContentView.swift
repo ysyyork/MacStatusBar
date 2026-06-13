@@ -33,24 +33,34 @@ struct NetworkMenuContentView: View {
             // Current Speeds
             HStack(spacing: 0) {
                 // Upload
-                HStack(spacing: 4) {
+                HStack(alignment: .center, spacing: 4) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.orange)
-                    Text(ByteFormatter.formatSpeed(monitor.uploadSpeed))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(monitor.uploadSpeed > 1_000_000 ? .green : .primary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(ByteFormatter.formatSpeed(monitor.uploadSpeed))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(monitor.uploadSpeed > 1_000_000 ? .green : .primary)
+                        Text(ByteFormatter.formatMbps(monitor.uploadSpeed))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity)
 
                 // Download
-                HStack(spacing: 4) {
+                HStack(alignment: .center, spacing: 4) {
                     Image(systemName: "arrow.down")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.cyan)
-                    Text(ByteFormatter.formatSpeed(monitor.downloadSpeed))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(monitor.downloadSpeed > 1_000_000 ? .green : .primary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(ByteFormatter.formatSpeed(monitor.downloadSpeed))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(monitor.downloadSpeed > 1_000_000 ? .green : .primary)
+                        Text(ByteFormatter.formatMbps(monitor.downloadSpeed))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity)
             }

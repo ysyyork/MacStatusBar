@@ -79,8 +79,8 @@ final class DiskMonitor: ObservableObject {
                 switch runResult {
                 case .success(let output):
                     AppLogger.disk.info("Ejected disk at \(mountPoint): \(output)")
-                    // Refresh disk list after successful eject
-                    self?.updateDisks()
+                    // Refresh disk list after successful eject, bypassing rate limit
+                    self?.updateDisks(force: true)
                     completion(true, nil)
                 case .failure(let error):
                     AppLogger.disk.error("Failed to eject disk at \(mountPoint): \(error.localizedDescription)")
@@ -145,7 +145,7 @@ final class DiskMonitor: ObservableObject {
 
     private func checkHealth() {
         if let lastUpdate = lastSuccessfulUpdate,
-           Date().timeIntervalSince(lastUpdate) > healthCheckInterval {
+           Date().timeIntervalSince(lastUpdate) > 10.0 {
             AppLogger.disk.warning("Disk monitor stale, restarting...")
             restartMonitoring()
         }
@@ -195,8 +195,8 @@ final class DiskMonitor: ObservableObject {
 
     // MARK: - Disk Info
 
-    private func updateDisks() {
-        guard shouldUpdate() else { return }
+    private func updateDisks(force: Bool = false) {
+        guard force || shouldUpdate() else { return }
 
         var localDisks: [DiskInfo] = []
         var netDisks: [DiskInfo] = []

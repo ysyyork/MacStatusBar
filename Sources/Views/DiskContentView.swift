@@ -286,7 +286,7 @@ struct DiskMenuBarView: View {
 
         let image = NSImage(size: NSSize(width: width, height: height))
 
-        let rep = NSBitmapImageRep(
+        guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int(width * 2),
             pixelsHigh: Int(height * 2),
@@ -297,7 +297,7 @@ struct DiskMenuBarView: View {
             colorSpaceName: .deviceRGB,
             bytesPerRow: 0,
             bitsPerPixel: 0
-        )!
+        ) else { return NSImage() }
         rep.size = NSSize(width: width, height: height)
 
         NSGraphicsContext.saveGraphicsState()
@@ -314,8 +314,8 @@ struct DiskMenuBarView: View {
         // Draw icon with red tint
         if let iconImage = NSImage(systemSymbolName: "internaldrive.fill", accessibilityDescription: nil) {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-            if let configuredIcon = iconImage.withSymbolConfiguration(config) {
-                let tintedIcon = configuredIcon.copy() as! NSImage
+            if let configuredIcon = iconImage.withSymbolConfiguration(config),
+               let tintedIcon = configuredIcon.copy() as? NSImage {
                 tintedIcon.lockFocus()
                 textColor.set()
                 let iconRect = NSRect(origin: .zero, size: tintedIcon.size)
