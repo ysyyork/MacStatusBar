@@ -634,7 +634,7 @@ final class AdditionalFormatterTests: XCTestCase {
     }
 
     func testMenuBarSpeedNegative() {
-        XCTAssertEqual(ByteFormatter.menuBarSpeed(-100), "  0 KB/s")
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(-100), "  0 B/s")
     }
 
     func testMenuBarSpeedFixedWidth() {

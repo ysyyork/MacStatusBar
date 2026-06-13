@@ -98,7 +98,7 @@ final class CPUMonitor: ObservableObject {
 
     private func checkHealth() {
         if let lastUpdate = lastSuccessfulUpdate,
-           Date().timeIntervalSince(lastUpdate) > healthCheckInterval {
+           Date().timeIntervalSince(lastUpdate) > 10.0 {
             AppLogger.cpu.warning("CPU monitor stale, restarting...")
             restartMonitoring()
         }
@@ -567,9 +567,9 @@ final class CPUMonitor: ObservableObject {
                         let name = String(components[2])
                         let processName = (name as NSString).lastPathComponent
 
-                        // Convert KB to bytes and clamp to reasonable range
-                        // Max 1TB to catch any invalid/overflow values
-                        let memoryBytes = min(1_099_511_627_776, rssKB * 1024)
+                        // Cap rssKB before multiplying to prevent UInt64 overflow
+                        let safeKB = min(rssKB, 1_073_741_824)  // 1TB in KB
+                        let memoryBytes = safeKB * 1024
 
                         // Only show processes using significant memory (> 1MB)
                         if memoryBytes > 1_048_576 {

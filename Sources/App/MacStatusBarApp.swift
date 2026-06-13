@@ -228,7 +228,7 @@ struct CPUMenuBarView: View {
         // Create image with proper Retina support
         let image = NSImage(size: NSSize(width: width, height: height))
 
-        let rep = NSBitmapImageRep(
+        guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int(width * 2),
             pixelsHigh: Int(height * 2),
@@ -239,7 +239,7 @@ struct CPUMenuBarView: View {
             colorSpaceName: .deviceRGB,
             bytesPerRow: 0,
             bitsPerPixel: 0
-        )!
+        ) else { return NSImage() }
         rep.size = NSSize(width: width, height: height)
 
         NSGraphicsContext.saveGraphicsState()
@@ -257,8 +257,8 @@ struct CPUMenuBarView: View {
         // Draw icon with red tint
         if let iconImage = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil) {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-            if let configuredIcon = iconImage.withSymbolConfiguration(config) {
-                let tintedIcon = configuredIcon.copy() as! NSImage
+            if let configuredIcon = iconImage.withSymbolConfiguration(config),
+               let tintedIcon = configuredIcon.copy() as? NSImage {
                 tintedIcon.lockFocus()
                 textColor.set()
                 let iconRect = NSRect(origin: .zero, size: tintedIcon.size)

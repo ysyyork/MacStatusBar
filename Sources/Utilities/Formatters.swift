@@ -77,7 +77,7 @@ struct ByteFormatter {
     /// Ultra-compact speed format for menu bar (e.g., "13 KB/s" or "0 KB/s")
     static func menuBarSpeed(_ bytesPerSecond: Double) -> String {
         if bytesPerSecond < 0 {
-            return "  0 KB/s"
+            return "  0 B/s"
         }
 
         let units = ["B/s", "KB/s", "MB/s", "GB/s"]

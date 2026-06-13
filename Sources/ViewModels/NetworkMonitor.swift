@@ -103,7 +103,7 @@ final class NetworkMonitor: ObservableObject {
 
     private func checkHealth() {
         if let lastUpdate = lastSuccessfulUpdate,
-           Date().timeIntervalSince(lastUpdate) > healthCheckInterval {
+           Date().timeIntervalSince(lastUpdate) > 10.0 {
             AppLogger.network.warning("Network monitor stale, restarting...")
             restartMonitoring()
         }
@@ -208,7 +208,7 @@ final class NetworkMonitor: ObservableObject {
 
         let runResult = ProcessRunner.run(
             executable: "/usr/bin/nettop",
-            arguments: ["-P", "-L", "1", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch", "-t", "wifi", "-t", "wired"],
+            arguments: ["-P", "-L", "1", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch", "-t", "wifi", "-t", "wired", "-t", "vpn"],
             timeout: 10.0
         )
 
