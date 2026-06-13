@@ -74,6 +74,21 @@ struct ByteFormatter {
         }
     }
 
+    /// Format speed in Mbps (megabits per second). 1 byte = 8 bits.
+    static func formatMbps(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond < 0 { return "—" }
+        let mbps = bytesPerSecond * 8 / 1_000_000
+        if mbps >= 1000 {
+            return String(format: "%.1f Gbps", mbps / 1000)
+        } else if mbps >= 100 {
+            return String(format: "%.0f Mbps", mbps)
+        } else if mbps >= 1 {
+            return String(format: "%.1f Mbps", mbps)
+        } else {
+            return String(format: "%.0f Kbps", mbps * 1000)
+        }
+    }
+
     /// Ultra-compact speed format for menu bar (e.g., "13 KB/s" or "0 KB/s")
     static func menuBarSpeed(_ bytesPerSecond: Double) -> String {
         if bytesPerSecond < 0 {
