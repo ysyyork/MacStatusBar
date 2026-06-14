@@ -33,6 +33,12 @@ final class ByteFormatterTests: XCTestCase {
         XCTAssertEqual(ByteFormatter.formatSpeed(-100), "—")
     }
 
+    func testFormatSpeedFixedUnit() {
+        XCTAssertEqual(ByteFormatter.formatSpeed(1_500_000, unit: .bytesPerSec), "1500000.0 B/s")
+        XCTAssertEqual(ByteFormatter.formatSpeed(1_500_000, unit: .kilobytesPerSec), "1500.0 KB/s")
+        XCTAssertEqual(ByteFormatter.formatSpeed(1_500_000, unit: .megabytesPerSec), "1.5 MB/s")
+    }
+
     // MARK: - formatBytes Tests
 
     func testFormatBytesSmall() {
@@ -87,6 +93,11 @@ final class ByteFormatterTests: XCTestCase {
 
     func testCompactSpeedNegative() {
         XCTAssertEqual(ByteFormatter.compactSpeed(-1), "—")
+    }
+
+    func testMenuBarSpeedFixedUnit() {
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(1_500_000, unit: .kilobytesPerSec), "1500 KB/s")
+        XCTAssertEqual(ByteFormatter.menuBarSpeed(1_500_000, unit: .megabytesPerSec), "  2 MB/s")
     }
 }
 

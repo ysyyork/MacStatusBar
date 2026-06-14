@@ -6,16 +6,13 @@ struct CPUMenuContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // CPU Header
             SectionHeader(title: "CPU")
 
-            // CPU Usage Graph
             CPUHistogramView(history: monitor.cpuHistory)
                 .frame(height: 50)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
 
-            // CPU Usage breakdown
             VStack(spacing: 4) {
                 HStack {
                     Circle()
@@ -57,8 +54,7 @@ struct CPUMenuContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
 
-            // CPU Temperature
-            if monitor.cpuTemperature > 0 {
+            if settings.cpuShowTemperature && monitor.cpuTemperature > 0 {
                 HStack {
                     Text("CPU Temperature")
                         .foregroundColor(.secondary)
@@ -76,14 +72,11 @@ struct CPUMenuContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
 
-            // TOP CPU Header
             SectionHeader(title: "TOP CPU")
 
-            // Process list
             VStack(spacing: 4) {
-                ForEach(monitor.topProcesses) { process in
+                ForEach(Array(monitor.topProcesses.prefix(settings.cpuProcessCount))) { process in
                     HStack {
-                        // Process icon
                         ProcessIconView(pid: process.pid, processName: process.name, size: 14)
                         Text(process.name)
                             .lineLimit(1)
@@ -108,189 +101,185 @@ struct CPUMenuContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
 
-            Divider()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+            if settings.cpuShowMemory || settings.cpuShowGPU {
+                Divider()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
 
-            // Processor Name Header
-            SectionHeader(title: monitor.processorName.uppercased())
+                SectionHeader(title: monitor.processorName.uppercased())
 
-            // Memory/GPU/Swap bars
-            VStack(spacing: 8) {
-                // Memory usage bar
-                HStack {
-                    Text("Memory")
-                        .foregroundColor(.secondary)
-                        .frame(width: 70, alignment: .leading)
-                    ProgressBarView(value: memoryUsageRatio, color: .blue)
-                    Text(SystemFormatter.formatMemoryUsage(used: monitor.memoryUsed, total: monitor.memoryTotal))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(width: 85, alignment: .trailing)
-                }
-
-                // GPU usage bar
-                HStack {
-                    Text("GPU")
-                        .foregroundColor(.secondary)
-                        .frame(width: 70, alignment: .leading)
-                    ProgressBarView(value: monitor.gpuUsage / 100, color: .green)
-                    Text(String(format: "%.0f%%", monitor.gpuUsage))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(width: 55, alignment: .trailing)
-                }
-
-                // GPU Memory (only show if we have data)
-                if monitor.gpuMemoryBytes > 0 {
-                    HStack {
-                        Text("GPU Mem")
-                            .foregroundColor(.secondary)
-                            .frame(width: 70, alignment: .leading)
-                        if monitor.gpuMemoryTotal > 0 {
-                            ProgressBarView(value: Double(monitor.gpuMemoryBytes) / Double(monitor.gpuMemoryTotal), color: .blue)
-                            Text(SystemFormatter.formatMemoryUsage(used: monitor.gpuMemoryBytes, total: monitor.gpuMemoryTotal))
+                VStack(spacing: 8) {
+                    if settings.cpuShowMemory {
+                        HStack {
+                            Text("Memory")
+                                .foregroundColor(.secondary)
+                                .frame(width: 70, alignment: .leading)
+                            ProgressBarView(value: memoryUsageRatio, color: .blue)
+                            Text(SystemFormatter.formatMemoryUsage(used: monitor.memoryUsed, total: monitor.memoryTotal))
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .frame(width: 85, alignment: .trailing)
-                        } else {
-                            Spacer()
-                            Text(SystemFormatter.formatMemory(monitor.gpuMemoryBytes))
+                        }
+                    }
+
+                    if settings.cpuShowGPU {
+                        HStack {
+                            Text("GPU")
+                                .foregroundColor(.secondary)
+                                .frame(width: 70, alignment: .leading)
+                            ProgressBarView(value: monitor.gpuUsage / 100, color: .green)
+                            Text(String(format: "%.0f%%", monitor.gpuUsage))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 55, alignment: .trailing)
+                        }
+
+                        if monitor.gpuMemoryBytes > 0 {
+                            HStack {
+                                Text("GPU Mem")
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 70, alignment: .leading)
+                                if monitor.gpuMemoryTotal > 0 {
+                                    ProgressBarView(value: Double(monitor.gpuMemoryBytes) / Double(monitor.gpuMemoryTotal), color: .blue)
+                                    Text(SystemFormatter.formatMemoryUsage(used: monitor.gpuMemoryBytes, total: monitor.gpuMemoryTotal))
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 85, alignment: .trailing)
+                                } else {
+                                    Spacer()
+                                    Text(SystemFormatter.formatMemory(monitor.gpuMemoryBytes))
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 85, alignment: .trailing)
+                                }
+                            }
+                        }
+                    }
+
+                    if settings.cpuShowMemory && (monitor.swapUsed > 0 || monitor.swapTotal > 0) {
+                        HStack {
+                            Text("Swap")
+                                .foregroundColor(.secondary)
+                                .frame(width: 70, alignment: .leading)
+                            ProgressBarView(value: swapUsageRatio, color: swapUsageRatio > 0.8 ? .orange : .green)
+                            Text(SystemFormatter.formatMemoryUsage(used: monitor.swapUsed, total: monitor.swapTotal))
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .frame(width: 85, alignment: .trailing)
                         }
                     }
                 }
-
-                // Swap usage (only show if swap is being used)
-                if monitor.swapUsed > 0 || monitor.swapTotal > 0 {
-                    HStack {
-                        Text("Swap")
-                            .foregroundColor(.secondary)
-                            .frame(width: 70, alignment: .leading)
-                        ProgressBarView(value: swapUsageRatio, color: swapUsageRatio > 0.8 ? .orange : .green)
-                        Text(SystemFormatter.formatMemoryUsage(used: monitor.swapUsed, total: monitor.swapTotal))
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .frame(width: 85, alignment: .trailing)
-                    }
-                }
-            }
-            .font(.system(size: 11))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-
-            Divider()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-
-            // TOP MEMORY Header
-            SectionHeader(title: "TOP MEMORY")
-
-            // Memory process list
-            VStack(spacing: 4) {
-                ForEach(monitor.topMemoryProcesses) { process in
-                    HStack {
-                        // Process icon
-                        ProcessIconView(pid: process.pid, processName: process.name, size: 14)
-                        Text(process.name)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(SystemFormatter.formatMemory(process.memoryBytes))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.primary)
-                    }
-                    .font(.system(size: 11))
-                    .foregroundColor(.primary)
-                }
-
-                if monitor.topMemoryProcesses.isEmpty {
-                    Text("No active processes")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 4)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-
-            Divider()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-
-            // LOAD AVERAGE Header
-            SectionHeader(title: "LOAD AVERAGE")
-
-            // Load graph
-            LoadHistogramView(
-                history: monitor.loadHistory,
-                peakLoad: monitor.peakLoad
-            )
-            .frame(height: 40)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-
-            // Peak load
-            HStack {
-                Text("Peak Load:")
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text(String(format: "%.0f", monitor.peakLoad))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.primary)
-            }
-            .font(.system(size: 11))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-
-            // Load averages
-            HStack(spacing: 16) {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 8, height: 8)
-                    Text(String(format: "%.2f", monitor.loadAverage.0))
-                        .font(.system(size: 11, design: .monospaced))
-                }
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 8, height: 8)
-                    Text(String(format: "%.2f", monitor.loadAverage.1))
-                        .font(.system(size: 11, design: .monospaced))
-                }
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color.cyan)
-                        .frame(width: 8, height: 8)
-                    Text(String(format: "%.2f", monitor.loadAverage.2))
-                        .font(.system(size: 11, design: .monospaced))
-                }
-            }
-            .foregroundColor(.primary)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-
-            Divider()
-                .padding(.horizontal, 12)
-
-            // UPTIME Header
-            SectionHeader(title: "UPTIME")
-
-            // Uptime value
-            Text(SystemFormatter.formatUptime(monitor.uptime))
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(.primary)
+                .font(.system(size: 11))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
+            }
+
+            if settings.cpuShowMemory {
+                Divider()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+
+                SectionHeader(title: "TOP MEMORY")
+
+                VStack(spacing: 4) {
+                    ForEach(Array(monitor.topMemoryProcesses.prefix(settings.memoryProcessCount))) { process in
+                        HStack {
+                            ProcessIconView(pid: process.pid, processName: process.name, size: 14)
+                            Text(process.name)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(SystemFormatter.formatMemory(process.memoryBytes))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.primary)
+                        }
+                        .font(.system(size: 11))
+                        .foregroundColor(.primary)
+                    }
+
+                    if monitor.topMemoryProcesses.isEmpty {
+                        Text("No active processes")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 4)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            }
+
+            if settings.cpuShowLoadAverage {
+                Divider()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+
+                SectionHeader(title: "LOAD AVERAGE")
+
+                LoadHistogramView(
+                    history: monitor.loadHistory,
+                    peakLoad: monitor.peakLoad
+                )
+                .frame(height: 40)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+
+                HStack {
+                    Text("Peak Load:")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(String(format: "%.0f", monitor.peakLoad))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(.primary)
+                }
+                .font(.system(size: 11))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+
+                HStack(spacing: 16) {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 8, height: 8)
+                        Text(String(format: "%.2f", monitor.loadAverage.0))
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 8, height: 8)
+                        Text(String(format: "%.2f", monitor.loadAverage.1))
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.cyan)
+                            .frame(width: 8, height: 8)
+                        Text(String(format: "%.2f", monitor.loadAverage.2))
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+
+            if settings.cpuShowUptime {
+                Divider()
+                    .padding(.horizontal, 12)
+
+                SectionHeader(title: "UPTIME")
+
+                Text(SystemFormatter.formatUptime(monitor.uptime))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+            }
 
             Divider()
                 .padding(.horizontal, 12)
 
-            // Settings and Quit Buttons
             MenuFooterButtons()
         }
         .frame(width: 280)

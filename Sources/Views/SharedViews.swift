@@ -219,3 +219,32 @@ struct MenuFooterButtons: View {
         }
     }
 }
+
+// MARK: - App Control Menu
+
+struct AppControlMenuContentView: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "MACSTATUSBAR")
+
+            VStack(spacing: 8) {
+                Toggle("Network Monitor", isOn: $settings.showNetworkMonitor)
+                Toggle("CPU Monitor", isOn: $settings.showCPUMonitor)
+                Toggle("Disk Monitor", isOn: $settings.showDiskMonitor)
+            }
+            .toggleStyle(.switch)
+            .font(.system(size: 12))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            Divider()
+                .padding(.horizontal, 12)
+
+            MenuFooterButtons()
+        }
+        .frame(width: 220)
+        .padding(.vertical, 8)
+    }
+}

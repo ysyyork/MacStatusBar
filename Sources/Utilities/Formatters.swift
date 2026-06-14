@@ -4,8 +4,16 @@ import Foundation
 
 struct ByteFormatter {
     static func formatSpeed(_ bytesPerSecond: Double) -> String {
+        formatSpeed(bytesPerSecond, unit: .auto)
+    }
+
+    static func formatSpeed(_ bytesPerSecond: Double, unit: SpeedUnit) -> String {
         if bytesPerSecond < 0 {
             return "—"
+        }
+
+        if unit != .auto {
+            return formatSpeed(bytesPerSecond, fixedUnit: unit, decimals: 1)
         }
 
         let units = ["B/s", "KB/s", "MB/s", "GB/s"]
@@ -91,8 +99,16 @@ struct ByteFormatter {
 
     /// Ultra-compact speed format for menu bar (e.g., "13 KB/s" or "0 KB/s")
     static func menuBarSpeed(_ bytesPerSecond: Double) -> String {
+        menuBarSpeed(bytesPerSecond, unit: .auto)
+    }
+
+    static func menuBarSpeed(_ bytesPerSecond: Double, unit: SpeedUnit) -> String {
         if bytesPerSecond < 0 {
             return "  0 B/s"
+        }
+
+        if unit != .auto {
+            return formatSpeed(bytesPerSecond, fixedUnit: unit, decimals: 0, padded: true)
         }
 
         let units = ["B/s", "KB/s", "MB/s", "GB/s"]
@@ -107,6 +123,28 @@ struct ByteFormatter {
         // Fixed width: 3 chars for number + space + 4 chars for unit = consistent width
         // Pad number to 3 characters for consistent menu bar width
         return String(format: "%3.0f %@", value, units[unitIndex])
+    }
+
+    private static func formatSpeed(
+        _ bytesPerSecond: Double,
+        fixedUnit unit: SpeedUnit,
+        decimals: Int,
+        padded: Bool = false
+    ) -> String {
+        let value: Double
+        switch unit {
+        case .auto:
+            value = bytesPerSecond
+        case .bytesPerSec:
+            value = bytesPerSecond
+        case .kilobytesPerSec:
+            value = bytesPerSecond / 1000
+        case .megabytesPerSec:
+            value = bytesPerSecond / 1_000_000
+        }
+
+        let width = padded ? 3 : 0
+        return String(format: "%\(width).\(decimals)f %@", value, unit.rawValue)
     }
 }
 

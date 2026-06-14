@@ -41,8 +41,8 @@ struct DiskMenuContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
-            // NETWORK DISKS Header (only show if there are network disks)
-            if !monitor.networkDisks.isEmpty {
+            // NETWORK DISKS Header (only show if enabled and there are network disks)
+            if settings.diskShowNetworkDisks && !monitor.networkDisks.isEmpty {
                 Divider()
                     .padding(.horizontal, 12)
 
@@ -57,8 +57,8 @@ struct DiskMenuContentView: View {
                 .padding(.vertical, 8)
             }
 
-            // PROCESSES Header (only show if there are active processes)
-            if !monitor.topProcesses.isEmpty {
+            // PROCESSES Header (only show if enabled and there are active processes)
+            if settings.diskShowProcesses && !monitor.topProcesses.isEmpty {
                 Divider()
                     .padding(.horizontal, 12)
 
@@ -80,7 +80,7 @@ struct DiskMenuContentView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
 
-                    ForEach(monitor.topProcesses) { process in
+                    ForEach(Array(monitor.topProcesses.prefix(settings.diskProcessCount))) { process in
                         HStack {
                             // Process icon
                             ProcessIconView(pid: process.pid, processName: process.name, size: 14)
