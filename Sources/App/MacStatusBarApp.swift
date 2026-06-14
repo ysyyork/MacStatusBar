@@ -65,12 +65,13 @@ struct MacStatusBarApp: App {
     @StateObject private var networkMonitor = NetworkMonitor()
     @StateObject private var cpuMonitor = CPUMonitor()
     @StateObject private var diskMonitor = DiskMonitor()
+    @StateObject private var settings = AppSettings.shared
+    @AppStorage("showNetworkMonitor") private var showNetworkMonitor = true
+    @AppStorage("showCPUMonitor") private var showCPUMonitor = true
+    @AppStorage("showDiskMonitor") private var showDiskMonitor = true
 
     // Initialize the coordinator to start monitoring
     private let coordinator = MenuBarCoordinator.shared
-
-    // Access settings as a regular property (not @ObservedObject to avoid view update issues)
-    private var settings: AppSettings { AppSettings.shared }
 
     var body: some Scene {
         // Settings Window
@@ -78,36 +79,48 @@ struct MacStatusBarApp: App {
             SettingsView()
         }
 
+        // Rescue control item only appears if every monitor item is hidden.
+        MenuBarExtra(isInserted: Binding(
+            get: { !showNetworkMonitor && !showCPUMonitor && !showDiskMonitor },
+            set: { _ in }
+        )) {
+            AppControlMenuContentView(settings: settings)
+        } label: {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 11, weight: .medium))
+        }
+        .menuBarExtraStyle(.window)
+
         // Network Monitor Menu Bar Extra
-        MenuBarExtra {
-            NetworkMenuContentView(monitor: networkMonitor, settings: AppSettings.shared)
+        MenuBarExtra(isInserted: $showNetworkMonitor) {
+            NetworkMenuContentView(monitor: networkMonitor, settings: settings)
         } label: {
             NetworkMenuBarView(
                 uploadSpeed: networkMonitor.uploadSpeed,
                 downloadSpeed: networkMonitor.downloadSpeed,
-                settings: AppSettings.shared
+                settings: settings
             )
         }
         .menuBarExtraStyle(.window)
 
         // CPU/GPU Monitor Menu Bar Extra
-        MenuBarExtra {
-            CPUMenuContentView(monitor: cpuMonitor, settings: AppSettings.shared)
+        MenuBarExtra(isInserted: $showCPUMonitor) {
+            CPUMenuContentView(monitor: cpuMonitor, settings: settings)
         } label: {
             CPUMenuBarView(
                 cpuUsage: cpuMonitor.userCPU + cpuMonitor.systemCPU,
-                warningThreshold: AppSettings.shared.cpuWarningThreshold
+                warningThreshold: settings.cpuWarningThreshold
             )
         }
         .menuBarExtraStyle(.window)
 
         // Disk Monitor Menu Bar Extra
-        MenuBarExtra {
-            DiskMenuContentView(monitor: diskMonitor, settings: AppSettings.shared)
+        MenuBarExtra(isInserted: $showDiskMonitor) {
+            DiskMenuContentView(monitor: diskMonitor, settings: settings)
         } label: {
             DiskMenuBarView(
                 diskUsage: diskMonitor.mainDiskUsage,
-                warningThreshold: AppSettings.shared.diskWarningThreshold
+                warningThreshold: settings.diskWarningThreshold
             )
         }
         .menuBarExtraStyle(.window)
@@ -148,8 +161,8 @@ struct NetworkMenuBarView: View {
 
         if bothShown {
             // Two lines: upload on top, download below
-            let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed))"
-            let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed))"
+            let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed, unit: settings.networkSpeedUnit))"
+            let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed, unit: settings.networkSpeedUnit))"
 
             let upAttrs: [NSAttributedString.Key: Any] = [
                 .font: font,
@@ -166,7 +179,7 @@ struct NetworkMenuBarView: View {
             let downString = NSAttributedString(string: downText, attributes: downAttrs)
             downString.draw(at: NSPoint(x: 0, y: 0))
         } else if showUpload {
-            let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed))"
+            let upText = "▲ \(ByteFormatter.menuBarSpeed(uploadSpeed, unit: settings.networkSpeedUnit))"
             let upAttrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: uploadFast ? greenColor : normalColor
@@ -174,7 +187,7 @@ struct NetworkMenuBarView: View {
             let upString = NSAttributedString(string: upText, attributes: upAttrs)
             upString.draw(at: NSPoint(x: 0, y: 3))
         } else if showDownload {
-            let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed))"
+            let downText = "▼ \(ByteFormatter.menuBarSpeed(downloadSpeed, unit: settings.networkSpeedUnit))"
             let downAttrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: downloadFast ? greenColor : normalColor

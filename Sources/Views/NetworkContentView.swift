@@ -38,7 +38,7 @@ struct NetworkMenuContentView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.orange)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ByteFormatter.formatSpeed(monitor.uploadSpeed))
+                        Text(ByteFormatter.formatSpeed(monitor.uploadSpeed, unit: settings.networkSpeedUnit))
                             .font(.system(size: 12, weight: .medium, design: .monospaced))
                             .foregroundColor(monitor.uploadSpeed > 1_000_000 ? .green : .primary)
                         Text(ByteFormatter.formatMbps(monitor.uploadSpeed))
@@ -54,7 +54,7 @@ struct NetworkMenuContentView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.cyan)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ByteFormatter.formatSpeed(monitor.downloadSpeed))
+                        Text(ByteFormatter.formatSpeed(monitor.downloadSpeed, unit: settings.networkSpeedUnit))
                             .font(.system(size: 12, weight: .medium, design: .monospaced))
                             .foregroundColor(monitor.downloadSpeed > 1_000_000 ? .green : .primary)
                         Text(ByteFormatter.formatMbps(monitor.downloadSpeed))
