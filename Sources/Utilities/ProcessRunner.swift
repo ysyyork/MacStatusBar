@@ -63,19 +63,42 @@ struct ProcessRunner {
         let queue = DispatchQueue(label: "com.macstatusbar.processrunner", qos: .utility)
 
         queue.async {
+            // Drain both pipes concurrently while the process runs. Reading only
+            // after waitUntilExit() deadlocks once output exceeds the ~64KB pipe
+            // buffer: the child blocks on write() while we block waiting for it
+            // to exit (e.g. `ioreg -r -c IOAccelerator` emits ~68KB and hangs
+            // until this class's own timeout force-kills it, every single call).
+            let readGroup = DispatchGroup()
+            var outputData = Data()
+            var errorData = Data()
+
+            readGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                outputData = pipe.fileHandleForReading.readDataToEndOfFile()
+                readGroup.leave()
+            }
+            readGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                readGroup.leave()
+            }
+
             do {
                 try task.run()
+                readGroup.wait()
                 task.waitUntilExit()
 
-                let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
                 processOutput = String(data: outputData, encoding: .utf8)
-
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                 errorOutput = String(data: errorData, encoding: .utf8)
 
             } catch {
                 AppLogger.process.error("Failed to run process \(executable): \(error.localizedDescription)")
                 errorOutput = error.localizedDescription
+                // Task never launched, so nothing will close the pipes' write
+                // ends for us — close them so the readers above don't hang.
+                pipe.fileHandleForWriting.closeFile()
+                errorPipe.fileHandleForWriting.closeFile()
+                readGroup.wait()
             }
             semaphore.signal()
         }

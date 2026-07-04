@@ -99,6 +99,32 @@ final class ByteFormatterTests: XCTestCase {
         XCTAssertEqual(ByteFormatter.menuBarSpeed(1_500_000, unit: .kilobytesPerSec), "1500 KB/s")
         XCTAssertEqual(ByteFormatter.menuBarSpeed(1_500_000, unit: .megabytesPerSec), "  2 MB/s")
     }
+
+    // MARK: - microSpeed Tests
+
+    func testMicroSpeedZeroOrNegative() {
+        XCTAssertEqual(ByteFormatter.microSpeed(0), "0")
+        XCTAssertEqual(ByteFormatter.microSpeed(-100), "0")
+    }
+
+    func testMicroSpeedBytes() {
+        XCTAssertEqual(ByteFormatter.microSpeed(500), "500B")
+    }
+
+    func testMicroSpeedKilobytes() {
+        XCTAssertEqual(ByteFormatter.microSpeed(41_000), "41.0K")
+        XCTAssertEqual(ByteFormatter.microSpeed(999_000), "999K")
+    }
+
+    func testMicroSpeedMegabytesHasNoUnitSuffix() {
+        // Compact format drops "/s" and uses single-letter units, unlike compactSpeed
+        XCTAssertEqual(ByteFormatter.microSpeed(1_200_000), "1.2M")
+        XCTAssertFalse(ByteFormatter.microSpeed(1_200_000).contains("/s"))
+    }
+
+    func testMicroSpeedGigabytes() {
+        XCTAssertEqual(ByteFormatter.microSpeed(8_100_000_000), "8.1G")
+    }
 }
 
 final class SystemFormatterTests: XCTestCase {
@@ -737,6 +763,28 @@ final class ProcessRunnerTests: XCTestCase {
         XCTAssertTrue(ProcessError.executionFailed("reason").errorDescription?.contains("reason") ?? false)
         XCTAssertTrue(ProcessError.processNotFound("/path").errorDescription?.contains("/path") ?? false)
     }
+
+    func testRunWithLargeOutputDoesNotDeadlock() {
+        // Regression test: ProcessRunner used to call task.waitUntilExit()
+        // before reading the output pipe, which deadlocks once the child
+        // writes more than the OS pipe buffer (~64KB) — it blocks on write()
+        // forever while we block waiting for it to exit. `ioreg -r -c
+        // IOAccelerator` hit this on real hardware (~68KB of output) and
+        // silently returned a timeout error on every single call.
+        let byteCount = 200_000
+        let result = ProcessRunner.run(
+            executable: "/bin/sh",
+            arguments: ["-c", "yes | head -c \(byteCount)"],
+            timeout: 5.0
+        )
+
+        switch result {
+        case .success(let output):
+            XCTAssertEqual(output.count, byteCount)
+        case .failure(let error):
+            XCTFail("Expected success for large output, got error: \(error)")
+        }
+    }
 }
 
 // MARK: - Validation Tests
@@ -1268,5 +1316,58 @@ final class MemoryProcessTests: XCTestCase {
             let formatted = SystemFormatter.formatMemory(bytes)
             XCTAssertEqual(formatted, expected, "Expected \(expected) for \(bytes) bytes, got \(formatted)")
         }
+    }
+}
+
+// MARK: - Disk I/O Stat Parsing Tests
+
+final class DiskIOStatParsingTests: XCTestCase {
+
+    // Regression test: ioreg prints an entire "Statistics" dict inline on one
+    // line, e.g. `"Statistics" = {"Operations (Write)"=90711083,...,"Bytes
+    // (Read)"=1692324421632,...}`. The old parser split the whole line on "="
+    // and took parts[1], which just grabs whatever follows the FIRST "=" in
+    // the line (unrelated to the requested key) — so disk I/O speed silently
+    // reported zero always. extractStatValue instead finds the specific key
+    // and reads the digits that immediately follow it.
+    private let realIORegLine = """
+              "Statistics" = {"Operations (Write)"=90711083,"Latency Time (Write)"=0,"Bytes (Read)"=1692324421632,"Errors (Write)"=0,"Total Time (Read)"=18832323484659,"Latency Time (Read)"=0,"Retries (Read)"=0,"Errors (Read)"=0,"Total Time (Write)"=4406419082883,"Bytes (Write)"=2559615033344,"Operations (Read)"=102457487,"Retries (Write)"=0}
+    """
+
+    func testExtractsReadBytesFromRealIORegLine() {
+        let value = DiskMonitor.extractStatValue(from: realIORegLine, key: "Bytes (Read)")
+        XCTAssertEqual(value, 1_692_324_421_632)
+    }
+
+    func testExtractsWriteBytesFromRealIORegLine() {
+        let value = DiskMonitor.extractStatValue(from: realIORegLine, key: "Bytes (Write)")
+        XCTAssertEqual(value, 2_559_615_033_344)
+    }
+
+    func testReadAndWriteValuesAreDistinctNotFirstEqualsInLine() {
+        // The bug this guards against returns the same (wrong) value for
+        // every key on the line, since it always reads parts[1] regardless
+        // of which key was asked for.
+        let read = DiskMonitor.extractStatValue(from: realIORegLine, key: "Bytes (Read)")
+        let write = DiskMonitor.extractStatValue(from: realIORegLine, key: "Bytes (Write)")
+        XCTAssertNotEqual(read, write)
+        // Also shouldn't match the very first value on the line ("Operations
+        // (Write)"=90711083), which is what the naive split-on-"=" bug returned.
+        XCTAssertNotEqual(read, 90711083)
+        XCTAssertNotEqual(write, 90711083)
+    }
+
+    func testMissingKeyReturnsNil() {
+        XCTAssertNil(DiskMonitor.extractStatValue(from: realIORegLine, key: "Bytes (Nonexistent)"))
+    }
+
+    func testEmptyLineReturnsNil() {
+        XCTAssertNil(DiskMonitor.extractStatValue(from: "", key: "Bytes (Read)"))
+    }
+
+    func testZeroValueParsesCorrectly() {
+        let line = "\"Statistics\" = {\"Bytes (Write)\"=0,\"Bytes (Read)\"=42}"
+        XCTAssertEqual(DiskMonitor.extractStatValue(from: line, key: "Bytes (Write)"), 0)
+        XCTAssertEqual(DiskMonitor.extractStatValue(from: line, key: "Bytes (Read)"), 42)
     }
 }

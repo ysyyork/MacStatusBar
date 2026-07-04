@@ -82,6 +82,29 @@ struct ByteFormatter {
         }
     }
 
+    /// Ultra-compact speed format with single-letter units and no "/s" suffix,
+    /// for tight spaces like a status bar icon (e.g. "121K", "1.2M", "0").
+    static func microSpeed(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond <= 0 {
+            return "0"
+        }
+
+        let units = ["B", "K", "M", "G"]
+        var value = bytesPerSecond
+        var unitIndex = 0
+
+        while value >= 1000 && unitIndex < units.count - 1 {
+            value /= 1000
+            unitIndex += 1
+        }
+
+        if unitIndex == 0 || value >= 100 {
+            return String(format: "%.0f%@", value, units[unitIndex])
+        } else {
+            return String(format: "%.1f%@", value, units[unitIndex])
+        }
+    }
+
     /// Format speed in Mbps (megabits per second). 1 byte = 8 bits.
     static func formatMbps(_ bytesPerSecond: Double) -> String {
         if bytesPerSecond < 0 { return "—" }

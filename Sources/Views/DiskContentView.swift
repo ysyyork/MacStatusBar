@@ -155,31 +155,31 @@ struct DiskItemView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
-            // Usage bar with R/W indicators
+            // Usage bar (fixed width, independent of speed text)
+            DiskUsageBar(usage: disk.usagePercentage)
+
+            // Aggregated R/W speed below the bar, so varying text width
+            // (e.g. "5.2 MB/s" vs "328 KB/s") never resizes the bar above.
             HStack(spacing: 8) {
-                // Usage bar
-                DiskUsageBar(usage: disk.usagePercentage)
-
-                // R/W activity indicators
-                HStack(spacing: 8) {
-                    HStack(spacing: 3) {
-                        Text("R")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.secondary)
-                        Circle()
-                            .fill(readSpeed > 0 ? Color.cyan : Color.gray.opacity(0.3))
-                            .frame(width: 8, height: 8)
-                    }
-
-                    HStack(spacing: 3) {
-                        Text("W")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.secondary)
-                        Circle()
-                            .fill(writeSpeed > 0 ? Color.orange : Color.gray.opacity(0.3))
-                            .frame(width: 8, height: 8)
-                    }
+                HStack(spacing: 3) {
+                    Text("R")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(ByteFormatter.compactSpeedOrDash(readSpeed))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.cyan)
                 }
+
+                HStack(spacing: 3) {
+                    Text("W")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(ByteFormatter.compactSpeedOrDash(writeSpeed))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.orange)
+                }
+
+                Spacer()
             }
         }
     }
@@ -257,32 +257,69 @@ struct DiskUsageBar: View {
 
 struct DiskMenuBarView: View {
     let diskUsage: Double  // 0.0 to 1.0
+    var readSpeed: Double = 0
+    var writeSpeed: Double = 0
     var warningThreshold: Double = 90.0
+
+    // A manually-created bitmap context doesn't inherit the menu bar's actual
+    // appearance, so NSColor.labelColor resolves to light-mode black even in a
+    // dark menu bar. Reading the SwiftUI color scheme (which does track the
+    // real context) lets us pick the correct color ourselves.
+    @Environment(\.colorScheme) private var colorScheme
 
     private var isHighUsage: Bool {
         (diskUsage * 100) > warningThreshold
     }
 
     var body: some View {
-        if isHighUsage {
-            Image(nsImage: createDiskImage())
-        } else {
-            HStack(spacing: 3) {
-                Image(systemName: "internaldrive.fill")
-                    .font(.system(size: 11))
-                Text(String(format: "%3.0f%%", diskUsage * 100))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .frame(width: 36, alignment: .trailing)
-            }
-            .foregroundColor(.primary)
-        }
+        // Always draw as a bitmap: SwiftUI's native layout inside a MenuBarExtra
+        // label doesn't reliably render multi-line/multi-color content (a nested
+        // VStack here collapsed to a single line in testing), so — like
+        // NetworkMenuBarView — this composes the whole label as one NSImage.
+        Image(nsImage: createDiskImage())
     }
 
-    private func createDiskImage() -> NSImage {
-        let text = String(format: "%3.0f%%", diskUsage * 100)
+    // Same "fast" cutoff Network uses to turn its arrows green, so both
+    // monitors highlight heavy activity the same way instead of using
+    // unrelated fixed colors.
+    private static let fastThreshold: Double = 1_000_000
 
-        let width: CGFloat = 50
-        let height: CGFloat = 18
+    private func createDiskImage() -> NSImage {
+        let percentText = String(format: "%.0f%%", diskUsage * 100)
+        let readText = ByteFormatter.microSpeed(readSpeed)
+        let writeText = ByteFormatter.microSpeed(writeSpeed)
+
+        let primaryColor: NSColor = isHighUsage ? .systemRed : (colorScheme == .dark ? .white : .black)
+        let readColor: NSColor = readSpeed > Self.fastThreshold ? .systemGreen : primaryColor
+        let writeColor: NSColor = writeSpeed > Self.fastThreshold ? .systemGreen : primaryColor
+        // Labels use the same primary color as everything else — a muted
+        // secondary color had too little contrast to read against the
+        // menu bar's translucent background.
+        let labelColor = primaryColor
+
+        let iconSize: CGFloat = 9
+        let percentFont = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
+        let letterFont = NSFont.monospacedSystemFont(ofSize: 8, weight: .medium)
+        let valueFont = NSFont.monospacedSystemFont(ofSize: 8, weight: .medium)
+
+        let percentAttrs: [NSAttributedString.Key: Any] = [.font: percentFont, .foregroundColor: primaryColor]
+        let rLabelAttrs: [NSAttributedString.Key: Any] = [.font: letterFont, .foregroundColor: labelColor]
+        let wLabelAttrs: [NSAttributedString.Key: Any] = [.font: letterFont, .foregroundColor: labelColor]
+        let readAttrs: [NSAttributedString.Key: Any] = [.font: valueFont, .foregroundColor: readColor]
+        let writeAttrs: [NSAttributedString.Key: Any] = [.font: valueFont, .foregroundColor: writeColor]
+
+        // Reserve room for the longest realistic string in each slot (rather
+        // than the current one) so the icon's width stays stable and doesn't
+        // jitter as digit counts change from tick to tick.
+        let percentWidth = NSAttributedString(string: "100%", attributes: percentAttrs).size().width
+        let rLabelWidth = NSAttributedString(string: "R", attributes: rLabelAttrs).size().width
+        let wLabelWidth = NSAttributedString(string: "W", attributes: wLabelAttrs).size().width
+        let valueWidth = NSAttributedString(string: "999K", attributes: readAttrs).size().width
+
+        let row1Width = iconSize + 3 + percentWidth
+        let row2Width = rLabelWidth + 2 + valueWidth + 9 + wLabelWidth + 2 + valueWidth
+        let width = ceil(max(row1Width, row2Width)) + 2
+        let height: CGFloat = 20
 
         let image = NSImage(size: NSSize(width: width, height: height))
 
@@ -303,31 +340,30 @@ struct DiskMenuBarView: View {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 
-        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
-        let textColor = NSColor.red
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: textColor
-        ]
-
-        // Draw icon with red tint
+        // Row 1 (top): icon + storage percentage, centered over the wider row below
+        let row1X = max(0, (width - row1Width) / 2)
         if let iconImage = NSImage(systemSymbolName: "internaldrive.fill", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            let config = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .regular)
             if let configuredIcon = iconImage.withSymbolConfiguration(config),
                let tintedIcon = configuredIcon.copy() as? NSImage {
                 tintedIcon.lockFocus()
-                textColor.set()
-                let iconRect = NSRect(origin: .zero, size: tintedIcon.size)
-                iconRect.fill(using: .sourceAtop)
+                primaryColor.set()
+                NSRect(origin: .zero, size: tintedIcon.size).fill(using: .sourceAtop)
                 tintedIcon.unlockFocus()
-                tintedIcon.draw(in: NSRect(x: 0, y: 2, width: 14, height: 14))
+                tintedIcon.draw(in: NSRect(x: row1X, y: 12, width: iconSize, height: iconSize))
             }
         }
+        NSAttributedString(string: percentText, attributes: percentAttrs).draw(at: NSPoint(x: row1X + iconSize + 3, y: 11))
 
-        // Draw text
-        let textString = NSAttributedString(string: text, attributes: attrs)
-        textString.draw(at: NSPoint(x: 16, y: 1))
+        // Row 2 (bottom): R <value>  W <value>, left-aligned under row 1
+        var x: CGFloat = 0
+        NSAttributedString(string: "R", attributes: rLabelAttrs).draw(at: NSPoint(x: x, y: 1))
+        x += rLabelWidth + 2
+        NSAttributedString(string: readText, attributes: readAttrs).draw(at: NSPoint(x: x, y: 1))
+        x += valueWidth + 9
+        NSAttributedString(string: "W", attributes: wLabelAttrs).draw(at: NSPoint(x: x, y: 1))
+        x += wLabelWidth + 2
+        NSAttributedString(string: writeText, attributes: writeAttrs).draw(at: NSPoint(x: x, y: 1))
 
         NSGraphicsContext.restoreGraphicsState()
 

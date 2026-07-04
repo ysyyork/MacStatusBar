@@ -27,14 +27,25 @@ An open-source system monitoring status bar app for macOS users.
 
 ### Disk Monitor
 - Local disk usage with visual bars
+- Aggregated read/write speed shown on the menu bar icon and in the dropdown
 - Network disk detection
 - Eject button for external and network disks
-- Read/Write activity indicators
 - Per-process disk I/O activity
+
+### Settings
+Each monitor's menu bar icon can be shown/hidden independently, with per-monitor customization available from the Settings window (⌘,):
+- **General**: Launch at login, show/hide each monitor's menu bar icon
+- **Network**: Show/hide upload or download speed, speed unit (Auto/B/KB/MB per second), number of processes shown in the dropdown
+- **CPU**: CPU/memory warning thresholds, which dropdown sections are shown (temperature, GPU, memory, load average, uptime), number of CPU/memory processes shown
+- **Disk**: Disk usage warning threshold, show/hide network disks and process activity in the dropdown, number of processes shown
+
+If every monitor is hidden, a small rescue icon appears in the menu bar so Settings stays reachable.
 
 ### Robustness Features
 - **Structured Logging**: Uses Apple's `os_log` for debugging via Console.app (filter by "com.macstatusbar")
-- **Process Timeout**: External commands (system_profiler, ioreg, ps) have configurable timeouts to prevent hangs
+- **App Nap Prevention**: Opts the whole process out of App Nap so background monitoring timers keep firing at their configured interval instead of being throttled while the app has no visible window
+- **Process Timeout**: External commands (system_profiler, ioreg, ps, nettop) have configurable timeouts to prevent hangs
+- **Deadlock-Safe Subprocess Execution**: Drains stdout/stderr concurrently while a subprocess runs, avoiding the classic `Process`/`Pipe` deadlock that can occur once command output exceeds the OS pipe buffer
 - **Network Resilience**: WAN IP fetching includes retry with exponential backoff (1s, 2s, 4s) and fallback services (ipify.org -> ipinfo.io -> icanhazip.com)
 - **Network Reachability**: NWPathMonitor detects connectivity changes to avoid unnecessary requests when offline
 - **Health Monitoring**: Auto-recovery when monitors become stale (restarts after 30s of no updates)

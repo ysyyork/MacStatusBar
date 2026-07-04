@@ -10,9 +10,22 @@ final class MenuBarCoordinator: ObservableObject {
 
     private var observation: NSObjectProtocol?
     private var lastActiveWindow: NSWindow?
+    private var appNapActivity: NSObjectProtocol?
 
     private init() {
         setupWindowObserver()
+        preventAppNap()
+    }
+
+    /// This app has no windows (LSUIElement) and isn't ever frontmost, so macOS
+    /// classifies it as idle and throttles its background timers via App Nap —
+    /// the monitors' 1s DispatchSourceTimers can silently stretch to many seconds.
+    /// Holding this activity token opts the process out for its entire lifetime.
+    private func preventAppNap() {
+        appNapActivity = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "Continuous menu bar system monitoring"
+        )
     }
 
     private func setupWindowObserver() {
@@ -120,6 +133,8 @@ struct MacStatusBarApp: App {
         } label: {
             DiskMenuBarView(
                 diskUsage: diskMonitor.mainDiskUsage,
+                readSpeed: diskMonitor.totalReadSpeed,
+                writeSpeed: diskMonitor.totalWriteSpeed,
                 warningThreshold: settings.diskWarningThreshold
             )
         }

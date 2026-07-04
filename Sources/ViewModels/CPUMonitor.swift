@@ -51,6 +51,7 @@ final class CPUMonitor: ObservableObject {
 
     private var timer: DispatchSourceTimer?
     private var processTimer: DispatchSourceTimer?
+    private var gpuTimer: DispatchSourceTimer?
     private var healthCheckTimer: DispatchSourceTimer?
     private var previousCPUInfo: host_cpu_load_info?
     private var cachedProcessorName: String?
@@ -69,6 +70,7 @@ final class CPUMonitor: ObservableObject {
         fetchProcessorNameAsync()
         startMonitoring()
         startProcessMonitoring()
+        startGPUMonitoring()
         startHealthCheckTimer()
     }
 
@@ -79,6 +81,9 @@ final class CPUMonitor: ObservableObject {
         processTimer?.setEventHandler(handler: nil)
         processTimer?.cancel()
         processTimer = nil
+        gpuTimer?.setEventHandler(handler: nil)
+        gpuTimer?.cancel()
+        gpuTimer = nil
         healthCheckTimer?.setEventHandler(handler: nil)
         healthCheckTimer?.cancel()
         healthCheckTimer = nil
@@ -195,6 +200,31 @@ final class CPUMonitor: ObservableObject {
         processTimer?.resume()
     }
 
+    private func startGPUMonitoring() {
+        // GPU stats require spawning `ioreg`, which is far slower than the in-process
+        // mach/sysctl calls used for CPU/memory. Poll it on its own timer/queue so a
+        // slow subprocess spawn never delays the CPU percentage shown in the menu bar.
+        let queue = DispatchQueue(label: "com.macstatusbar.cpu.gpu", qos: .utility)
+        gpuTimer = DispatchSource.makeTimerSource(queue: queue)
+        gpuTimer?.schedule(deadline: .now(), repeating: 2.0)
+        gpuTimer?.setEventHandler { [weak self] in
+            self?.updateGPUStats()
+        }
+        gpuTimer?.resume()
+    }
+
+    private func updateGPUStats() {
+        let gpuStats = getGPUUsage()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.gpuUsage = gpuStats.usage
+            self.gpuMemoryUsage = gpuStats.memoryPercent
+            self.gpuMemoryBytes = gpuStats.memoryBytes
+            self.gpuMemoryTotal = gpuStats.memoryTotal
+            self.gpuName = gpuStats.name
+        }
+    }
+
     // MARK: - Stats Update
 
     private func updateStats() {
@@ -204,7 +234,6 @@ final class CPUMonitor: ObservableObject {
         let temp = getCPUTemperature()
         let load = getLoadAverage()
         let uptimeVal = getUptime()
-        let gpuStats = getGPUUsage()
         let memInfo = getMemoryInfo()
         let swapInfo = getSwapInfo()
 
@@ -216,11 +245,6 @@ final class CPUMonitor: ObservableObject {
             self.cpuTemperature = temp
             self.loadAverage = load
             self.uptime = uptimeVal
-            self.gpuUsage = gpuStats.usage
-            self.gpuMemoryUsage = gpuStats.memoryPercent
-            self.gpuMemoryBytes = gpuStats.memoryBytes
-            self.gpuMemoryTotal = gpuStats.memoryTotal
-            self.gpuName = gpuStats.name
             self.memoryUsed = memInfo.used
             self.memoryTotal = memInfo.total
             self.swapUsed = swapInfo.used
