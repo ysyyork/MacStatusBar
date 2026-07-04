@@ -52,8 +52,15 @@ final class DiskMonitor: ObservableObject {
     @Published var disks: [DiskInfo] = []
     @Published var networkDisks: [DiskInfo] = []
     @Published var topProcesses: [ProcessDiskUsage] = []
+    // totalReadSpeed/totalWriteSpeed cover the internal system disk only, so an
+    // attached external drive doing heavy I/O doesn't make the menu bar icon
+    // look like the internal disk is busy. Each external physical disk gets
+    // its own entry in externalDiskSpeeds, keyed by whole-disk BSD name (e.g.
+    // "disk11"); mounted disk images are excluded from both.
     @Published var totalReadSpeed: Double = 0
     @Published var totalWriteSpeed: Double = 0
+    @Published var externalDiskSpeeds: [String: (read: Double, write: Double)] = [:]
+    @Published var mountPointToWholeDiskID: [String: String] = [:]
 
     // Computed property for system disk usage (the disk mounted at "/")
     var mainDiskUsage: Double {
@@ -98,6 +105,15 @@ final class DiskMonitor: ObservableObject {
     private var healthCheckTimer: DispatchSourceTimer?
     private var previousDiskStats: [String: (read: UInt64, write: UInt64)] = [:]
     private var previousProcessStats: [Int32: (read: UInt64, write: UInt64)] = [:]
+
+    // Caches for classifying ioreg's whole-disk BSD IDs (internal vs. external
+    // physical vs. disk image) and for mapping a mounted volume's mount point
+    // to its underlying whole-disk BSD ID. Both are stable for as long as a
+    // disk stays attached, so caching avoids a diskutil subprocess call per
+    // poll — only the first sighting of a given disk pays that cost.
+    private var wholeDiskClassificationCache: [String: (isInternal: Bool, isPhysical: Bool)] = [:]
+    private var mountPointWholeDiskCache: [String: String] = [:]
+    private var containerToPhysicalCache: [String: String] = [:]
 
     // Track recently active processes to show even when current activity is 0
     private var recentProcessActivity: [Int32: RecentProcessActivity] = [:]
@@ -297,19 +313,31 @@ final class DiskMonitor: ObservableObject {
     // MARK: - Disk I/O
 
     private func updateDiskIO() {
+        // Stats are keyed by whole-disk BSD name (e.g. "disk0", "disk11"),
+        // one entry per physical/virtual block storage device ioreg reports.
         let stats = getDiskIOStats()
 
-        var totalRead: UInt64 = 0
-        var totalWrite: UInt64 = 0
+        var internalReadDelta: UInt64 = 0
+        var internalWriteDelta: UInt64 = 0
+        var externalDeltas: [String: (read: UInt64, write: UInt64)] = [:]
 
-        for (disk, current) in stats {
-            if let previous = previousDiskStats[disk] {
-                // Handle counter wraparound
-                let readDelta = current.read >= previous.read ? current.read - previous.read : current.read
-                let writeDelta = current.write >= previous.write ? current.write - previous.write : current.write
-                totalRead += readDelta
-                totalWrite += writeDelta
+        for (wholeDiskID, current) in stats {
+            guard let previous = previousDiskStats[wholeDiskID] else { continue }
+
+            // Handle counter wraparound
+            let readDelta = current.read >= previous.read ? current.read - previous.read : current.read
+            let writeDelta = current.write >= previous.write ? current.write - previous.write : current.write
+
+            let classification = classifyWholeDisk(wholeDiskID)
+            if classification.isInternal {
+                internalReadDelta += readDelta
+                internalWriteDelta += writeDelta
+            } else if classification.isPhysical {
+                externalDeltas[wholeDiskID] = (readDelta, writeDelta)
             }
+            // Anything else (a mounted disk image, an unresolvable device) is
+            // neither the internal disk nor a real external drive, so it's
+            // deliberately left out of both totals.
         }
 
         previousDiskStats = stats
@@ -317,12 +345,32 @@ final class DiskMonitor: ObservableObject {
         // Convert to bytes per second (we poll every 2 seconds)
         // Clamp to reasonable values (max 10 GB/s for NVMe)
         let maxSpeed: Double = 10_000_000_000
-        let readSpeed = min(maxSpeed, max(0, Double(totalRead) / 2.0))
-        let writeSpeed = min(maxSpeed, max(0, Double(totalWrite) / 2.0))
+        let internalReadSpeed = min(maxSpeed, max(0, Double(internalReadDelta) / 2.0))
+        let internalWriteSpeed = min(maxSpeed, max(0, Double(internalWriteDelta) / 2.0))
+        let externalSpeeds = externalDeltas.mapValues { delta in
+            (
+                read: min(maxSpeed, max(0, Double(delta.read) / 2.0)),
+                write: min(maxSpeed, max(0, Double(delta.write) / 2.0))
+            )
+        }
+
+        // Resolve each currently-mounted non-root volume to the whole-disk ID
+        // its speed should come from. Cheap: statfs is in-process, and the
+        // one diskutil call needed for APFS-container volumes is cached per
+        // disk after the first sighting.
+        let externalMountPoints = disks.filter { $0.mountPoint != "/" }.map { $0.mountPoint }
+        var mountPointMapping: [String: String] = [:]
+        for mountPoint in externalMountPoints {
+            if let wholeDiskID = resolveWholeDiskID(forMountPoint: mountPoint) {
+                mountPointMapping[mountPoint] = wholeDiskID
+            }
+        }
 
         DispatchQueue.main.async { [weak self] in
-            self?.totalReadSpeed = readSpeed
-            self?.totalWriteSpeed = writeSpeed
+            self?.totalReadSpeed = internalReadSpeed
+            self?.totalWriteSpeed = internalWriteSpeed
+            self?.externalDiskSpeeds = externalSpeeds
+            self?.mountPointToWholeDiskID = mountPointMapping
         }
     }
 
@@ -335,39 +383,152 @@ final class DiskMonitor: ObservableObject {
 
         let runResult = ProcessRunner.run(
             executable: "/usr/sbin/ioreg",
-            arguments: ["-r", "-c", "IOBlockStorageDriver", "-d", "1"],
+            arguments: ["-r", "-c", "IOBlockStorageDriver", "-d", "2", "-l"],
             timeout: 5.0
         )
 
         switch runResult {
         case .success(let output):
-            // Each disk's "id 0x..." header line precedes its "Statistics" line,
-            // which ioreg prints as a single inline dict, e.g.:
-            //   +-o IOBlockStorageDriver  <class IOBlockStorageDriver, id 0x100000e50, ...>
-            //       "Statistics" = {"Operations (Write)"=90711083,...,"Bytes (Read)"=1692324421632,...}
-            var currentDiskID = "disk"
+            // Each driver's own "Statistics" dict comes first, followed by its
+            // direct child IOMedia (the whole raw disk, not a partition) which
+            // carries "BSD Name". We accumulate both per block and commit once
+            // we hit the next driver (or the end of output).
+            var currentBytesRead: UInt64 = 0
+            var currentBytesWritten: UInt64 = 0
+            var currentBSDName: String?
+
+            func commitCurrentEntry() {
+                if let bsdName = currentBSDName, currentBytesRead > 0 || currentBytesWritten > 0 {
+                    result[bsdName] = (currentBytesRead, currentBytesWritten)
+                }
+                currentBytesRead = 0
+                currentBytesWritten = 0
+                currentBSDName = nil
+            }
 
             let lines = output.components(separatedBy: "\n")
             for line in lines {
-                if line.contains("<class IOBlockStorageDriver"),
-                   let idRange = line.range(of: "id 0x") {
-                    let remaining = line[idRange.lowerBound...]
-                    if let endIndex = remaining.firstIndex(of: ",") {
-                        currentDiskID = String(remaining[..<endIndex])
-                    }
+                if line.contains("<class IOBlockStorageDriver") {
+                    commitCurrentEntry()
                 } else if line.contains("\"Statistics\"") {
-                    let bytesRead = Self.extractStatValue(from: line, key: "Bytes (Read)") ?? 0
-                    let bytesWritten = Self.extractStatValue(from: line, key: "Bytes (Write)") ?? 0
-                    if bytesRead > 0 || bytesWritten > 0 {
-                        result[currentDiskID] = (bytesRead, bytesWritten)
+                    currentBytesRead = Self.extractStatValue(from: line, key: "Bytes (Read)") ?? 0
+                    currentBytesWritten = Self.extractStatValue(from: line, key: "Bytes (Write)") ?? 0
+                } else if line.contains("\"BSD Name\""),
+                          let range = line.range(of: "= \"") {
+                    let remaining = line[range.upperBound...]
+                    if let endIndex = remaining.firstIndex(of: "\"") {
+                        currentBSDName = String(remaining[..<endIndex])
                     }
                 }
             }
+            commitCurrentEntry()
         case .failure(let error):
             AppLogger.disk.debug("ioreg failed: \(error.localizedDescription)")
         }
 
         return result
+    }
+
+    /// Classifies a whole-disk BSD ID (e.g. "disk0", "disk11") using diskutil,
+    /// distinguishing the internal disk, real external physical disks, and
+    /// mounted disk images (which report as external but virtual).
+    private func classifyWholeDisk(_ wholeDiskID: String) -> (isInternal: Bool, isPhysical: Bool) {
+        if let cached = wholeDiskClassificationCache[wholeDiskID] {
+            return cached
+        }
+
+        var classification = (isInternal: false, isPhysical: false)
+        let runResult = ProcessRunner.run(
+            executable: "/usr/sbin/diskutil",
+            arguments: ["info", "-plist", wholeDiskID],
+            timeout: 5.0
+        )
+        if case .success(let output) = runResult, let data = output.data(using: .utf8) {
+            classification = Self.parseClassification(fromDiskutilPlistData: data)
+        }
+
+        wholeDiskClassificationCache[wholeDiskID] = classification
+        return classification
+    }
+
+    /// Extracts (isInternal, isPhysical) from `diskutil info -plist <disk>`
+    /// output. isPhysical is true only for "VirtualOrPhysical" == "Physical",
+    /// which excludes mounted disk images (reported as "Virtual").
+    static func parseClassification(fromDiskutilPlistData data: Data) -> (isInternal: Bool, isPhysical: Bool) {
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+            return (isInternal: false, isPhysical: false)
+        }
+        let isInternal = plist["Internal"] as? Bool ?? false
+        let virtualOrPhysical = plist["VirtualOrPhysical"] as? String ?? "Unknown"
+        return (isInternal: isInternal, isPhysical: virtualOrPhysical == "Physical")
+    }
+
+    /// Resolves a mounted volume's mount point to the whole-disk BSD ID its
+    /// I/O stats should come from, hopping from an APFS container (e.g.
+    /// "disk13") to its underlying physical store (e.g. "disk14") when needed.
+    private func resolveWholeDiskID(forMountPoint mountPoint: String) -> String? {
+        if let cached = mountPointWholeDiskCache[mountPoint] {
+            return cached
+        }
+
+        var buf = statfs()
+        guard statfs(mountPoint, &buf) == 0 else { return nil }
+
+        let mntFromName = withUnsafeBytes(of: &buf.f_mntfromname) { rawBuffer -> String in
+            let ptr = rawBuffer.baseAddress!.assumingMemoryBound(to: CChar.self)
+            return String(cString: ptr)
+        }
+
+        guard mntFromName.hasPrefix("/dev/disk"),
+              let wholeDiskPrefix = Self.wholeDiskPrefix(fromBSDPath: mntFromName) else { return nil }
+
+        let resolved = resolvePhysicalWholeDisk(wholeDiskPrefix)
+        mountPointWholeDiskCache[mountPoint] = resolved
+        return resolved
+    }
+
+    /// Extracts the whole-disk prefix (e.g. "disk3") from a BSD device path
+    /// or name that may include a partition/snapshot suffix, e.g.
+    /// "/dev/disk3s1s1" or "disk11s2" both resolve to their leading "diskN".
+    static func wholeDiskPrefix(fromBSDPath path: String) -> String? {
+        let name = path.hasPrefix("/dev/") ? String(path.dropFirst("/dev/".count)) : path
+        guard let match = name.range(of: "^disk[0-9]+", options: .regularExpression) else { return nil }
+        return String(name[match])
+    }
+
+    private func resolvePhysicalWholeDisk(_ wholeDiskID: String) -> String {
+        if let cached = containerToPhysicalCache[wholeDiskID] {
+            return cached
+        }
+
+        var resolved = wholeDiskID
+        let runResult = ProcessRunner.run(
+            executable: "/usr/sbin/diskutil",
+            arguments: ["info", "-plist", wholeDiskID],
+            timeout: 5.0
+        )
+        if case .success(let output) = runResult,
+           let data = output.data(using: .utf8),
+           let physicalStoreWholeDisk = Self.parsePhysicalStoreWholeDisk(fromDiskutilPlistData: data) {
+            resolved = physicalStoreWholeDisk
+        }
+
+        containerToPhysicalCache[wholeDiskID] = resolved
+        return resolved
+    }
+
+    /// Extracts the whole-disk ID backing an APFS container's first physical
+    /// store from `diskutil info -plist <container>` output, e.g. an
+    /// "APFSPhysicalStore" of "disk0s2" resolves to "disk0". Returns nil if
+    /// the disk isn't a synthesized APFS container (e.g. it's already a
+    /// physical disk's own partition).
+    static func parsePhysicalStoreWholeDisk(fromDiskutilPlistData data: Data) -> String? {
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
+              let physicalStores = plist["APFSPhysicalStores"] as? [[String: Any]],
+              let physicalStoreBSD = physicalStores.first?["APFSPhysicalStore"] as? String else {
+            return nil
+        }
+        return wholeDiskPrefix(fromBSDPath: physicalStoreBSD)
     }
 
     /// Extracts a numeric value for `key` out of an inline dict line like

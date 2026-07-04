@@ -18,6 +18,21 @@ struct DiskMenuContentView: View {
         }
     }
 
+    // The internal system disk uses the aggregate internal speed; any other
+    // local disk (an attached external drive) gets its own speed looked up
+    // by the whole-disk BSD ID it was resolved to. A disk with no resolvable
+    // ID (e.g. a mounted disk image) simply shows no activity.
+    private func speed(for disk: DiskInfo) -> (read: Double, write: Double) {
+        if disk.mountPoint == "/" {
+            return (monitor.totalReadSpeed, monitor.totalWriteSpeed)
+        }
+        if let wholeDiskID = monitor.mountPointToWholeDiskID[disk.mountPoint],
+           let speed = monitor.externalDiskSpeeds[wholeDiskID] {
+            return speed
+        }
+        return (0, 0)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // DISKS Header
@@ -28,7 +43,8 @@ struct DiskMenuContentView: View {
                 ForEach(monitor.disks) { disk in
                     // Show eject button for any disk that's not the root volume
                     let canEject = disk.mountPoint != "/"
-                    DiskItemView(disk: disk, readSpeed: monitor.totalReadSpeed, writeSpeed: monitor.totalWriteSpeed, onEject: canEject ? { ejectDisk(disk) } : nil)
+                    let diskSpeed = speed(for: disk)
+                    DiskItemView(disk: disk, readSpeed: diskSpeed.read, writeSpeed: diskSpeed.write, onEject: canEject ? { ejectDisk(disk) } : nil)
                 }
 
                 if monitor.disks.isEmpty {

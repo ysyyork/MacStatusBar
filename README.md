@@ -27,7 +27,8 @@ An open-source system monitoring status bar app for macOS users.
 
 ### Disk Monitor
 - Local disk usage with visual bars
-- Aggregated read/write speed shown on the menu bar icon and in the dropdown
+- Read/write speed shown on the menu bar icon and in the dropdown, for the internal disk only — an attached external drive's I/O never makes the internal disk look busy
+- Each attached external physical disk shows its own independent read/write speed in the dropdown; mounted disk images (e.g. Simulator runtimes) are excluded entirely
 - Network disk detection
 - Eject button for external and network disks
 - Per-process disk I/O activity
