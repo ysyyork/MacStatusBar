@@ -1371,3 +1371,118 @@ final class DiskIOStatParsingTests: XCTestCase {
         XCTAssertEqual(DiskMonitor.extractStatValue(from: line, key: "Bytes (Read)"), 42)
     }
 }
+
+// MARK: - Internal/External Disk Classification Tests
+
+final class DiskClassificationTests: XCTestCase {
+
+    // Minimal `diskutil info -plist <disk>` fixtures, trimmed to the keys
+    // parseClassification/parsePhysicalStoreWholeDisk actually read. Values
+    // match real output captured from an internal SSD (disk0), an attached
+    // external USB drive (disk11), and a mounted Xcode Simulator disk image
+    // (disk4) — the exact case that used to be silently counted as if it
+    // were part of the internal disk's aggregate I/O.
+    private func plistData(internal isInternal: Bool, virtualOrPhysical: String) -> Data {
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Internal</key>
+            <\(isInternal ? "true" : "false")/>
+            <key>VirtualOrPhysical</key>
+            <string>\(virtualOrPhysical)</string>
+        </dict>
+        </plist>
+        """.data(using: .utf8)!
+    }
+
+    func testInternalDiskClassification() {
+        // disk0: the internal SSD reports VirtualOrPhysical "Unknown", not
+        // "Physical" — isInternal alone must be enough to include it.
+        let result = DiskMonitor.parseClassification(fromDiskutilPlistData: plistData(internal: true, virtualOrPhysical: "Unknown"))
+        XCTAssertTrue(result.isInternal)
+    }
+
+    func testExternalPhysicalDiskClassification() {
+        // disk11: a real attached USB drive
+        let result = DiskMonitor.parseClassification(fromDiskutilPlistData: plistData(internal: false, virtualOrPhysical: "Physical"))
+        XCTAssertFalse(result.isInternal)
+        XCTAssertTrue(result.isPhysical)
+    }
+
+    func testDiskImageIsNotTreatedAsPhysicalExternalDisk() {
+        // disk4: a mounted Xcode Simulator disk image — reports Internal=false
+        // just like a real external drive, but VirtualOrPhysical="Virtual".
+        // Regression: this used to be summed into the internal aggregate
+        // because nothing distinguished it from disk0 at all.
+        let result = DiskMonitor.parseClassification(fromDiskutilPlistData: plistData(internal: false, virtualOrPhysical: "Virtual"))
+        XCTAssertFalse(result.isInternal)
+        XCTAssertFalse(result.isPhysical)
+    }
+
+    func testMalformedPlistDataReturnsSafeDefault() {
+        let result = DiskMonitor.parseClassification(fromDiskutilPlistData: Data("not a plist".utf8))
+        XCTAssertFalse(result.isInternal)
+        XCTAssertFalse(result.isPhysical)
+    }
+
+    // MARK: - wholeDiskPrefix Tests
+
+    func testWholeDiskPrefixStripsPartitionSuffix() {
+        XCTAssertEqual(DiskMonitor.wholeDiskPrefix(fromBSDPath: "disk3s1s1"), "disk3")
+        XCTAssertEqual(DiskMonitor.wholeDiskPrefix(fromBSDPath: "disk11s2"), "disk11")
+    }
+
+    func testWholeDiskPrefixStripsDevPrefix() {
+        XCTAssertEqual(DiskMonitor.wholeDiskPrefix(fromBSDPath: "/dev/disk3s1s1"), "disk3")
+    }
+
+    func testWholeDiskPrefixOnBareWholeDisk() {
+        XCTAssertEqual(DiskMonitor.wholeDiskPrefix(fromBSDPath: "disk0"), "disk0")
+    }
+
+    func testWholeDiskPrefixReturnsNilForNonDiskPath() {
+        XCTAssertNil(DiskMonitor.wholeDiskPrefix(fromBSDPath: "not-a-disk"))
+    }
+
+    // MARK: - parsePhysicalStoreWholeDisk Tests
+
+    func testParsesAPFSContainerPhysicalStore() {
+        // disk3 (the boot APFS container) backed by disk0s2
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>APFSPhysicalStores</key>
+            <array>
+                <dict>
+                    <key>APFSPhysicalStore</key>
+                    <string>disk0s2</string>
+                </dict>
+            </array>
+        </dict>
+        </plist>
+        """.data(using: .utf8)!
+
+        XCTAssertEqual(DiskMonitor.parsePhysicalStoreWholeDisk(fromDiskutilPlistData: plist), "disk0")
+    }
+
+    func testNonContainerDiskReturnsNilPhysicalStore() {
+        // A plain physical disk (e.g. an HFS+/FAT-formatted external drive)
+        // has no APFSPhysicalStores key at all.
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Internal</key>
+            <false/>
+        </dict>
+        </plist>
+        """.data(using: .utf8)!
+
+        XCTAssertNil(DiskMonitor.parsePhysicalStoreWholeDisk(fromDiskutilPlistData: plist))
+    }
+}
