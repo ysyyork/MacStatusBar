@@ -94,6 +94,7 @@ final class DiskMonitor: ObservableObject {
 
     private var timer: DispatchSourceTimer?
     private var processTimer: DispatchSourceTimer?
+    private var diskIOTimer: DispatchSourceTimer?
     private var healthCheckTimer: DispatchSourceTimer?
     private var previousDiskStats: [String: (read: UInt64, write: UInt64)] = [:]
     private var previousProcessStats: [Int32: (read: UInt64, write: UInt64)] = [:]
@@ -116,6 +117,7 @@ final class DiskMonitor: ObservableObject {
         updateDisks()
         startMonitoring()
         startProcessMonitoring()
+        startDiskIOMonitoring()
         startHealthCheckTimer()
     }
 
@@ -126,6 +128,9 @@ final class DiskMonitor: ObservableObject {
         processTimer?.setEventHandler(handler: nil)
         processTimer?.cancel()
         processTimer = nil
+        diskIOTimer?.setEventHandler(handler: nil)
+        diskIOTimer?.cancel()
+        diskIOTimer = nil
         healthCheckTimer?.setEventHandler(handler: nil)
         healthCheckTimer?.cancel()
         healthCheckTimer = nil
@@ -176,7 +181,6 @@ final class DiskMonitor: ObservableObject {
         timer?.schedule(deadline: .now(), repeating: 2.0)
         timer?.setEventHandler { [weak self] in
             self?.updateDisks()
-            self?.updateDiskIO()
         }
         timer?.resume()
         lastSuccessfulUpdate = Date()
@@ -191,6 +195,20 @@ final class DiskMonitor: ObservableObject {
             self?.updateProcessStats()
         }
         processTimer?.resume()
+    }
+
+    private func startDiskIOMonitoring() {
+        // ioreg-based I/O throughput is spawned as a subprocess, which is slower and
+        // less predictable than the in-process FileManager calls used for disk usage.
+        // Polling it on its own timer keeps a slow sample from delaying the disk
+        // usage percentage shown in the menu bar.
+        let queue = DispatchQueue(label: "com.macstatusbar.disk.io", qos: .utility)
+        diskIOTimer = DispatchSource.makeTimerSource(queue: queue)
+        diskIOTimer?.schedule(deadline: .now(), repeating: 2.0)
+        diskIOTimer?.setEventHandler { [weak self] in
+            self?.updateDiskIO()
+        }
+        diskIOTimer?.resume()
     }
 
     // MARK: - Disk Info
@@ -309,35 +327,6 @@ final class DiskMonitor: ObservableObject {
     }
 
     private func getDiskIOStats() -> [String: (read: UInt64, write: UInt64)] {
-        var result: [String: (read: UInt64, write: UInt64)] = [:]
-
-        // Use iostat to get disk I/O statistics
-        let runResult = ProcessRunner.run(
-            executable: "/usr/sbin/iostat",
-            arguments: ["-d", "-c", "1"],
-            timeout: 5.0
-        )
-
-        switch runResult {
-        case .success(let output):
-            let lines = output.components(separatedBy: "\n")
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.hasPrefix("disk") || trimmed.isEmpty || trimmed.contains("KB/t") {
-                    continue
-                }
-
-                let components = trimmed.split(separator: " ", omittingEmptySubsequences: true)
-                if components.count >= 3 {
-                    // iostat output: KB/t tps MB/s
-                    // We need cumulative bytes, so use activity monitor approach
-                }
-            }
-        case .failure(let error):
-            AppLogger.disk.debug("iostat failed: \(error.localizedDescription)")
-        }
-
-        // Alternative: use ioreg for disk statistics
         return getDiskIOViaIOReg()
     }
 
@@ -352,25 +341,27 @@ final class DiskMonitor: ObservableObject {
 
         switch runResult {
         case .success(let output):
-            var currentDisk = "disk"
-            var bytesRead: UInt64 = 0
-            var bytesWritten: UInt64 = 0
+            // Each disk's "id 0x..." header line precedes its "Statistics" line,
+            // which ioreg prints as a single inline dict, e.g.:
+            //   +-o IOBlockStorageDriver  <class IOBlockStorageDriver, id 0x100000e50, ...>
+            //       "Statistics" = {"Operations (Write)"=90711083,...,"Bytes (Read)"=1692324421632,...}
+            var currentDiskID = "disk"
 
             let lines = output.components(separatedBy: "\n")
             for line in lines {
-                if line.contains("\"Bytes (Read)\"") {
-                    if let value = extractNumber(from: line) {
-                        bytesRead = value
+                if line.contains("<class IOBlockStorageDriver"),
+                   let idRange = line.range(of: "id 0x") {
+                    let remaining = line[idRange.lowerBound...]
+                    if let endIndex = remaining.firstIndex(of: ",") {
+                        currentDiskID = String(remaining[..<endIndex])
                     }
-                } else if line.contains("\"Bytes (Write)\"") {
-                    if let value = extractNumber(from: line) {
-                        bytesWritten = value
+                } else if line.contains("\"Statistics\"") {
+                    let bytesRead = Self.extractStatValue(from: line, key: "Bytes (Read)") ?? 0
+                    let bytesWritten = Self.extractStatValue(from: line, key: "Bytes (Write)") ?? 0
+                    if bytesRead > 0 || bytesWritten > 0 {
+                        result[currentDiskID] = (bytesRead, bytesWritten)
                     }
                 }
-            }
-
-            if bytesRead > 0 || bytesWritten > 0 {
-                result[currentDisk] = (bytesRead, bytesWritten)
             }
         case .failure(let error):
             AppLogger.disk.debug("ioreg failed: \(error.localizedDescription)")
@@ -379,13 +370,22 @@ final class DiskMonitor: ObservableObject {
         return result
     }
 
-    private func extractNumber(from line: String) -> UInt64? {
-        let parts = line.components(separatedBy: "=")
-        if parts.count > 1 {
-            let numStr = parts[1].trimmingCharacters(in: .whitespaces)
-            return UInt64(numStr)
+    /// Extracts a numeric value for `key` out of an inline dict line like
+    /// `"Statistics" = {"Bytes (Read)"=1692324421632,"Bytes (Write)"=...}`.
+    /// Naively splitting the whole line on "=" doesn't work since every key
+    /// in the dict shares the same line.
+    static func extractStatValue(from line: String, key: String) -> UInt64? {
+        guard let range = line.range(of: "\"\(key)\"=") else { return nil }
+        let remaining = line[range.upperBound...]
+        var numStr = ""
+        for char in remaining {
+            if char.isNumber {
+                numStr.append(char)
+            } else if !numStr.isEmpty {
+                break
+            }
         }
-        return nil
+        return UInt64(numStr)
     }
 
     // MARK: - Process Stats
