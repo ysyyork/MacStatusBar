@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import MacStatusBar
 
 final class ByteFormatterTests: XCTestCase {
@@ -435,6 +436,88 @@ final class AppSettingsTests: XCTestCase {
         let settings = AppSettings.shared
         let validUnits = SpeedUnit.allCases
         XCTAssertTrue(validUnits.contains(settings.networkSpeedUnit))
+    }
+}
+
+// MARK: - UserDefault Property Wrapper Tests
+
+/// Minimal ObservableObject exercising @UserDefault / @UserDefaultRaw in isolation,
+/// independent of AppSettings' own keys/defaults.
+private final class UserDefaultTestHarness: ObservableObject {
+    @UserDefault("com.macstatusbar.tests.boolKey", default: true) var flag: Bool
+    @UserDefault("com.macstatusbar.tests.intKey", default: 5) var count: Int
+    @UserDefaultRaw("com.macstatusbar.tests.speedUnitKey", default: .auto) var unit: SpeedUnit
+}
+
+final class UserDefaultPropertyWrapperTests: XCTestCase {
+    private let allTestKeys = [
+        "com.macstatusbar.tests.boolKey",
+        "com.macstatusbar.tests.intKey",
+        "com.macstatusbar.tests.speedUnitKey"
+    ]
+
+    override func setUp() {
+        super.setUp()
+        allTestKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+    }
+
+    override func tearDown() {
+        allTestKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        super.tearDown()
+    }
+
+    func testReturnsDefaultValueWhenKeyIsAbsent() {
+        let harness = UserDefaultTestHarness()
+        XCTAssertEqual(harness.flag, true)
+        XCTAssertEqual(harness.count, 5)
+        XCTAssertEqual(harness.unit, .auto)
+    }
+
+    func testSetPersistsToUserDefaultsAndReadsBack() {
+        let harness = UserDefaultTestHarness()
+
+        harness.flag = false
+        harness.count = 42
+
+        XCTAssertEqual(harness.flag, false)
+        XCTAssertEqual(harness.count, 42)
+        // Verify it's actually UserDefaults doing the storing, not an in-memory copy
+        XCTAssertEqual(UserDefaults.standard.object(forKey: "com.macstatusbar.tests.boolKey") as? Bool, false)
+        XCTAssertEqual(UserDefaults.standard.object(forKey: "com.macstatusbar.tests.intKey") as? Int, 42)
+    }
+
+    func testTwoInstancesShareTheSameUnderlyingStorage() {
+        let first = UserDefaultTestHarness()
+        first.count = 7
+
+        let second = UserDefaultTestHarness()
+        XCTAssertEqual(second.count, 7, "Both instances read/write the same UserDefaults key")
+    }
+
+    func testEnumRawValueRoundTrips() {
+        let harness = UserDefaultTestHarness()
+
+        harness.unit = .megabytesPerSec
+
+        XCTAssertEqual(harness.unit, .megabytesPerSec)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "com.macstatusbar.tests.speedUnitKey"), "MB/s")
+    }
+
+    func testEnumFallsBackToDefaultWhenStoredRawValueIsGarbage() {
+        UserDefaults.standard.set("not-a-real-unit", forKey: "com.macstatusbar.tests.speedUnitKey")
+        let harness = UserDefaultTestHarness()
+        XCTAssertEqual(harness.unit, .auto)
+    }
+
+    func testSettingTriggersObjectWillChange() {
+        let harness = UserDefaultTestHarness()
+        let expectation = expectation(description: "objectWillChange fires")
+        let cancellable = harness.objectWillChange.sink { expectation.fulfill() }
+
+        harness.flag = false
+
+        wait(for: [expectation], timeout: 1.0)
+        cancellable.cancel()
     }
 }
 
