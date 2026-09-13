@@ -21,6 +21,7 @@
 		B200000123456789000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B200000223456789000D /* Assets.xcassets */; };
 		B2000001234567890010 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890010 /* Logger.swift */; };
 		B2000001234567890011 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890011 /* ProcessRunner.swift */; };
+		B2000001234567890012 /* UserDefault.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890012 /* UserDefault.swift */; };
 		B2000001234567890100 /* MacStatusBarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002234567890100 /* MacStatusBarTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -51,6 +52,7 @@
 		B2000002234567890100 /* MacStatusBarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStatusBarTests.swift; sourceTree = "<group>"; };
 		B2000002234567890010 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		B2000002234567890011 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
+		B2000002234567890012 /* UserDefault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefault.swift; sourceTree = "<group>"; };
 		B2000003234567890001 /* MacStatusBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacStatusBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2000003234567890100 /* MacStatusBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacStatusBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -176,6 +178,7 @@
 				B2000002234567890004 /* Formatters.swift */,
 				B2000002234567890010 /* Logger.swift */,
 				B2000002234567890011 /* ProcessRunner.swift */,
+				B2000002234567890012 /* UserDefault.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -273,6 +276,7 @@
 				B200000123456789000C /* SettingsView.swift in Sources */,
 				B2000001234567890010 /* Logger.swift in Sources */,
 				B2000001234567890011 /* ProcessRunner.swift in Sources */,
+				B2000001234567890012 /* UserDefault.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
