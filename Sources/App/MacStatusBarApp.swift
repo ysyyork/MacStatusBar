@@ -2,6 +2,29 @@ import SwiftUI
 import AppKit
 import CoreText
 
+// MARK: - Dropdown Polling State
+
+/// Safely shares MenuBarExtra visibility between SwiftUI and background timers.
+final class DropdownPollingState {
+    private let lock = NSLock()
+    private var open = false
+
+    @discardableResult
+    func setOpen(_ isOpen: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard open != isOpen else { return false }
+        open = isOpen
+        return true
+    }
+
+    var isOpen: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return open
+    }
+}
+
 // MARK: - Menu Bar Coordinator
 
 /// Coordinates multiple MenuBarExtra windows to ensure only one is open at a time

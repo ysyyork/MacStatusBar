@@ -1,6 +1,73 @@
 import XCTest
 import Combine
+import Foundation
 @testable import MacStatusBar
+
+final class DropdownPollingStateTests: XCTestCase {
+
+    func testStartsClosed() {
+        XCTAssertFalse(DropdownPollingState().isOpen)
+    }
+
+    func testReportsVisibilityChanges() {
+        let state = DropdownPollingState()
+
+        XCTAssertTrue(state.setOpen(true))
+        XCTAssertTrue(state.isOpen)
+        XCTAssertTrue(state.setOpen(false))
+        XCTAssertFalse(state.isOpen)
+    }
+
+    func testIgnoresDuplicateVisibilityChanges() {
+        let state = DropdownPollingState()
+
+        XCTAssertFalse(state.setOpen(false))
+        XCTAssertTrue(state.setOpen(true))
+        XCTAssertFalse(state.setOpen(true))
+    }
+}
+
+final class DiskPollingIntegrationTests: XCTestCase {
+
+    func testDiskSpeedUpdatesWhileDropdownIsClosed() throws {
+        let monitor = DiskMonitor()
+        monitor.setDropdownOpen(false)
+
+        // Allow the first I/O sample to establish its counter baseline before
+        // writing data. The menu-bar disk rate must keep updating while closed.
+        RunLoop.current.run(until: Date().addingTimeInterval(2.5))
+
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacStatusBar-DiskPolling-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        try Data(repeating: 0xA5, count: 16 * 1024 * 1024).write(to: fileURL, options: .atomic)
+
+        let speedUpdated = expectation(description: "closed disk monitor reports write activity")
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            if monitor.totalWriteSpeed > 0 {
+                timer.invalidate()
+                speedUpdated.fulfill()
+            }
+        }
+        defer { timer.invalidate() }
+
+        wait(for: [speedUpdated], timeout: 6)
+    }
+}
+
+final class NetworkInterfaceCounterTests: XCTestCase {
+
+    func testInterfaceByteDeltaHandlesCounterRollover() {
+        let previous = UInt32.max - 99
+        let current: UInt32 = 50
+
+        XCTAssertEqual(NetworkMonitor.interfaceByteDelta(current: current, previous: previous), 150)
+    }
+
+    func testInterfaceByteDeltaWithoutRollover() {
+        XCTAssertEqual(NetworkMonitor.interfaceByteDelta(current: 200, previous: 50), 150)
+    }
+}
 
 final class ByteFormatterTests: XCTestCase {
 

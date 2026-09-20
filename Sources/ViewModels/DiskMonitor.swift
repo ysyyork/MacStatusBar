@@ -103,6 +103,8 @@ final class DiskMonitor: ObservableObject {
     private var processTimer: DispatchSourceTimer?
     private var diskIOTimer: DispatchSourceTimer?
     private var healthCheckTimer: DispatchSourceTimer?
+    private let processQueue = DispatchQueue(label: "com.macstatusbar.disk.process", qos: .utility)
+    private let dropdownState = DropdownPollingState()
     private var previousDiskStats: [String: (read: UInt64, write: UInt64)] = [:]
     private var previousProcessStats: [Int32: (read: UInt64, write: UInt64)] = [:]
 
@@ -125,7 +127,9 @@ final class DiskMonitor: ObservableObject {
 
     // Rate limiting
     private var lastUpdateTime: Date?
-    private let minUpdateInterval: TimeInterval = 0.5
+    private var updateInterval: TimeInterval {
+        max(UserDefaults.standard.object(forKey: "updateInterval") as? Double ?? 1.0, 0.5)
+    }
 
     // MARK: - Initialization
 
@@ -150,6 +154,17 @@ final class DiskMonitor: ObservableObject {
         healthCheckTimer?.setEventHandler(handler: nil)
         healthCheckTimer?.cancel()
         healthCheckTimer = nil
+    }
+
+    // MARK: - Dropdown Visibility
+
+    func setDropdownOpen(_ isOpen: Bool) {
+        guard dropdownState.setOpen(isOpen), isOpen else { return }
+        processQueue.async { [weak self] in
+            self?.previousProcessStats.removeAll()
+            self?.recentProcessActivity.removeAll()
+            self?.updateProcessStats()
+        }
     }
 
     // MARK: - Health Check
@@ -186,7 +201,7 @@ final class DiskMonitor: ObservableObject {
 
     private func shouldUpdate() -> Bool {
         guard let last = lastUpdateTime else { return true }
-        return Date().timeIntervalSince(last) >= minUpdateInterval
+        return Date().timeIntervalSince(last) >= updateInterval
     }
 
     // MARK: - Monitoring Control
@@ -194,7 +209,9 @@ final class DiskMonitor: ObservableObject {
     private func startMonitoring() {
         let queue = DispatchQueue(label: "com.macstatusbar.disk", qos: .utility)
         timer = DispatchSource.makeTimerSource(queue: queue)
-        timer?.schedule(deadline: .now(), repeating: 2.0)
+        // Volume capacity is cheap to sample; use the smallest supported tick
+        // and rate-limit it to the selected interval in updateDisks().
+        timer?.schedule(deadline: .now(), repeating: 0.5)
         timer?.setEventHandler { [weak self] in
             self?.updateDisks()
         }
@@ -204,11 +221,11 @@ final class DiskMonitor: ObservableObject {
     }
 
     private func startProcessMonitoring() {
-        let queue = DispatchQueue(label: "com.macstatusbar.disk.process", qos: .utility)
-        processTimer = DispatchSource.makeTimerSource(queue: queue)
+        processTimer = DispatchSource.makeTimerSource(queue: processQueue)
         processTimer?.schedule(deadline: .now() + 1, repeating: 2.0)
         processTimer?.setEventHandler { [weak self] in
-            self?.updateProcessStats()
+            guard let self, self.dropdownState.isOpen else { return }
+            self.updateProcessStats()
         }
         processTimer?.resume()
     }

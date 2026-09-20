@@ -53,6 +53,9 @@ final class CPUMonitor: ObservableObject {
     private var processTimer: DispatchSourceTimer?
     private var gpuTimer: DispatchSourceTimer?
     private var healthCheckTimer: DispatchSourceTimer?
+    private let processQueue = DispatchQueue(label: "com.macstatusbar.cpu.process", qos: .utility)
+    private let gpuQueue = DispatchQueue(label: "com.macstatusbar.cpu.gpu", qos: .utility)
+    private let dropdownState = DropdownPollingState()
     private var previousCPUInfo: host_cpu_load_info?
     private var cachedProcessorName: String?
 
@@ -62,7 +65,9 @@ final class CPUMonitor: ObservableObject {
 
     // Rate limiting
     private var lastUpdateTime: Date?
-    private let minUpdateInterval: TimeInterval = 0.5
+    private var updateInterval: TimeInterval {
+        max(UserDefaults.standard.object(forKey: "updateInterval") as? Double ?? 1.0, 0.5)
+    }
 
     // MARK: - Initialization
 
@@ -87,6 +92,14 @@ final class CPUMonitor: ObservableObject {
         healthCheckTimer?.setEventHandler(handler: nil)
         healthCheckTimer?.cancel()
         healthCheckTimer = nil
+    }
+
+    // MARK: - Dropdown Visibility
+
+    func setDropdownOpen(_ isOpen: Bool) {
+        guard dropdownState.setOpen(isOpen), isOpen else { return }
+        processQueue.async { [weak self] in self?.updateProcessStats() }
+        gpuQueue.async { [weak self] in self?.updateGPUStats() }
     }
 
     // MARK: - Health Check
@@ -123,7 +136,7 @@ final class CPUMonitor: ObservableObject {
 
     private func shouldUpdate() -> Bool {
         guard let last = lastUpdateTime else { return true }
-        return Date().timeIntervalSince(last) >= minUpdateInterval
+        return Date().timeIntervalSince(last) >= updateInterval
     }
 
     // MARK: - Processor Name
@@ -181,7 +194,9 @@ final class CPUMonitor: ObservableObject {
     private func startMonitoring() {
         let queue = DispatchQueue(label: "com.macstatusbar.cpu", qos: .utility)
         timer = DispatchSource.makeTimerSource(queue: queue)
-        timer?.schedule(deadline: .now(), repeating: 1.0)
+        // Tick at the smallest supported interval; shouldUpdate() applies the
+        // current user-selected interval without having to recreate the timer.
+        timer?.schedule(deadline: .now(), repeating: 0.5)
         timer?.setEventHandler { [weak self] in
             self?.updateStats()
         }
@@ -191,11 +206,11 @@ final class CPUMonitor: ObservableObject {
     }
 
     private func startProcessMonitoring() {
-        let queue = DispatchQueue(label: "com.macstatusbar.cpu.process", qos: .utility)
-        processTimer = DispatchSource.makeTimerSource(queue: queue)
+        processTimer = DispatchSource.makeTimerSource(queue: processQueue)
         processTimer?.schedule(deadline: .now() + 1, repeating: 2.0)
         processTimer?.setEventHandler { [weak self] in
-            self?.updateProcessStats()
+            guard let self, self.dropdownState.isOpen else { return }
+            self.updateProcessStats()
         }
         processTimer?.resume()
     }
@@ -204,11 +219,11 @@ final class CPUMonitor: ObservableObject {
         // GPU stats require spawning `ioreg`, which is far slower than the in-process
         // mach/sysctl calls used for CPU/memory. Poll it on its own timer/queue so a
         // slow subprocess spawn never delays the CPU percentage shown in the menu bar.
-        let queue = DispatchQueue(label: "com.macstatusbar.cpu.gpu", qos: .utility)
-        gpuTimer = DispatchSource.makeTimerSource(queue: queue)
+        gpuTimer = DispatchSource.makeTimerSource(queue: gpuQueue)
         gpuTimer?.schedule(deadline: .now(), repeating: 2.0)
         gpuTimer?.setEventHandler { [weak self] in
-            self?.updateGPUStats()
+            guard let self, self.dropdownState.isOpen else { return }
+            self.updateGPUStats()
         }
         gpuTimer?.resume()
     }
