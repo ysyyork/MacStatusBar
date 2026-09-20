@@ -26,10 +26,18 @@ final class NetworkMonitor: ObservableObject {
 
     private var ipRefreshTimer: DispatchSourceTimer?
     private var processTimer: DispatchSourceTimer?
+    private var trafficTimer: DispatchSourceTimer?
     private var healthCheckTimer: DispatchSourceTimer?
+    private let processQueue = DispatchQueue(label: "com.macstatusbar.network.process", qos: .utility)
+    private let trafficQueue = DispatchQueue(label: "com.macstatusbar.network.traffic", qos: .utility)
+    private let dropdownState = DropdownPollingState()
 
     // For tracking per-process deltas
     private var previousProcessBytes: [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] = [:]
+    // AF_LINK's if_data exposes 32-bit counters, so retain their native type
+    // and calculate deltas with wrapping arithmetic.
+    private var previousInterfaceBytes: (received: UInt32, sent: UInt32)?
+    private var previousTrafficSampleDate: Date?
 
     // Network reachability
     private var pathMonitor: NWPathMonitor?
@@ -53,6 +61,7 @@ final class NetworkMonitor: ObservableObject {
         setupNetworkPathMonitor()
         refreshIPAddresses()
         startIPRefreshTimer()
+        startTrafficMonitoring()
         startProcessMonitoring()
         startHealthCheckTimer()
     }
@@ -64,11 +73,25 @@ final class NetworkMonitor: ObservableObject {
         processTimer?.setEventHandler(handler: nil)
         processTimer?.cancel()
         processTimer = nil
+        trafficTimer?.setEventHandler(handler: nil)
+        trafficTimer?.cancel()
+        trafficTimer = nil
         healthCheckTimer?.setEventHandler(handler: nil)
         healthCheckTimer?.cancel()
         healthCheckTimer = nil
         pathMonitor?.cancel()
         pathMonitor = nil
+    }
+
+    // MARK: - Dropdown Visibility
+
+    func setDropdownOpen(_ isOpen: Bool) {
+        guard dropdownState.setOpen(isOpen), isOpen else { return }
+        trafficQueue.async { [weak self] in self?.updateTrafficStats() }
+        processQueue.async { [weak self] in
+            self?.previousProcessBytes.removeAll()
+            self?.updateProcessStats()
+        }
     }
 
     // MARK: - Network Reachability
@@ -102,6 +125,7 @@ final class NetworkMonitor: ObservableObject {
     }
 
     private func checkHealth() {
+        guard dropdownState.isOpen else { return }
         if let lastUpdate = lastSuccessfulUpdate,
            Date().timeIntervalSince(lastUpdate) > 10.0 {
             AppLogger.network.warning("Network monitor stale, restarting...")
@@ -123,11 +147,11 @@ final class NetworkMonitor: ObservableObject {
 
     private func startProcessMonitoring() {
         // Update process stats every 2 seconds
-        let queue = DispatchQueue(label: "com.networkutils.process", qos: .utility)
-        processTimer = DispatchSource.makeTimerSource(queue: queue)
+        processTimer = DispatchSource.makeTimerSource(queue: processQueue)
         processTimer?.schedule(deadline: .now() + 1, repeating: 2.0)
         processTimer?.setEventHandler { [weak self] in
-            self?.updateProcessStats()
+            guard let self, self.dropdownState.isOpen else { return }
+            self.updateProcessStats()
         }
         processTimer?.resume()
     }
@@ -135,8 +159,6 @@ final class NetworkMonitor: ObservableObject {
     private func updateProcessStats() {
         let processBytes = getProcessNetworkBytes()
         var processUsages: [ProcessNetworkUsage] = []
-        var totalDownload: Double = 0
-        var totalUpload: Double = 0
 
         for (name, bytes) in processBytes {
             // Only calculate speed if we have a previous reading for this process
@@ -158,10 +180,6 @@ final class NetworkMonitor: ObservableObject {
             if downloadSpeed > maxSpeed || uploadSpeed > maxSpeed {
                 continue
             }
-
-            // Add to totals
-            totalDownload += downloadSpeed
-            totalUpload += uploadSpeed
 
             // Only include in process list if there's activity
             if downloadSpeed > 0 || uploadSpeed > 0 {
@@ -185,22 +203,89 @@ final class NetworkMonitor: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.topProcesses = Array(sorted)
-
-            // Update total speeds from nettop data (more reliable than ifi_ibytes/ifi_obytes)
-            self.downloadSpeed = totalDownload
-            self.uploadSpeed = totalUpload
-
-            // Update session totals (accumulate bytes transferred)
-            // Speed is bytes/sec, we poll every 2 seconds
-            self.totalDownloaded += UInt64(totalDownload * 2)
-            self.totalUploaded += UInt64(totalUpload * 2)
-
-            // Update history
-            self.downloadHistory.removeFirst()
-            self.downloadHistory.append(totalDownload)
-            self.uploadHistory.removeFirst()
-            self.uploadHistory.append(totalUpload)
         }
+    }
+
+    // MARK: - Menu Bar Traffic Monitoring
+
+    /// Keeps the always-visible speed indicator current without running nettop.
+    private func startTrafficMonitoring() {
+        trafficTimer = DispatchSource.makeTimerSource(queue: trafficQueue)
+        // Tick at the smallest supported interval; updateTrafficStats() applies
+        // the current user-selected interval without restarting this timer.
+        trafficTimer?.schedule(deadline: .now(), repeating: 0.5)
+        trafficTimer?.setEventHandler { [weak self] in
+            self?.updateTrafficStats()
+        }
+        trafficTimer?.resume()
+    }
+
+    private func updateTrafficStats() {
+        if let previousDate = previousTrafficSampleDate,
+           Date().timeIntervalSince(previousDate) < updateInterval {
+            return
+        }
+        guard let current = getInterfaceBytes() else { return }
+        let now = Date()
+        defer {
+            previousInterfaceBytes = current
+            previousTrafficSampleDate = now
+        }
+
+        guard let previous = previousInterfaceBytes,
+              let previousDate = previousTrafficSampleDate else { return }
+
+        let elapsed = max(now.timeIntervalSince(previousDate), 0.5)
+        let receivedDelta = Self.interfaceByteDelta(current: current.received, previous: previous.received)
+        let sentDelta = Self.interfaceByteDelta(current: current.sent, previous: previous.sent)
+        let downloadSpeed = Double(receivedDelta) / elapsed
+        let uploadSpeed = Double(sentDelta) / elapsed
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.downloadSpeed = downloadSpeed
+            self.uploadSpeed = uploadSpeed
+            self.totalDownloaded += receivedDelta
+            self.totalUploaded += sentDelta
+            self.downloadHistory.removeFirst()
+            self.downloadHistory.append(downloadSpeed)
+            self.uploadHistory.removeFirst()
+            self.uploadHistory.append(uploadSpeed)
+        }
+    }
+
+    static func interfaceByteDelta(current: UInt32, previous: UInt32) -> UInt64 {
+        UInt64(current &- previous)
+    }
+
+    private var updateInterval: TimeInterval {
+        max(UserDefaults.standard.object(forKey: "updateInterval") as? Double ?? 1.0, 0.5)
+    }
+
+    private func getInterfaceBytes() -> (received: UInt32, sent: UInt32)? {
+        var addresses: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&addresses) == 0 else { return nil }
+        defer { freeifaddrs(addresses) }
+
+        var received: UInt32 = 0
+        var sent: UInt32 = 0
+        var pointer = addresses
+        while let interface = pointer {
+            defer { pointer = interface.pointee.ifa_next }
+            guard let address = interface.pointee.ifa_addr,
+                  address.pointee.sa_family == UInt8(AF_LINK),
+                  let namePointer = interface.pointee.ifa_name,
+                  String(cString: namePointer).hasPrefix("en"),
+                  let dataPointer = interface.pointee.ifa_data else {
+                continue
+            }
+
+            let data = dataPointer.assumingMemoryBound(to: if_data.self).pointee
+            received &+= data.ifi_ibytes
+            sent &+= data.ifi_obytes
+        }
+
+        return (received, sent)
     }
 
     private func getProcessNetworkBytes() -> [String: (bytesIn: UInt64, bytesOut: UInt64, pid: Int32)] {

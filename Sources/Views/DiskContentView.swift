@@ -130,6 +130,8 @@ struct DiskMenuContentView: View {
         } message: {
             Text(ejectError ?? "Unknown error")
         }
+        .onAppear { monitor.setDropdownOpen(true) }
+        .onDisappear { monitor.setDropdownOpen(false) }
     }
 }
 

@@ -284,6 +284,8 @@ struct CPUMenuContentView: View {
         }
         .frame(width: 280)
         .padding(.vertical, 8)
+        .onAppear { monitor.setDropdownOpen(true) }
+        .onDisappear { monitor.setDropdownOpen(false) }
     }
 
     // MARK: - Computed Properties

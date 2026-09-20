@@ -35,7 +35,7 @@ An open-source system monitoring status bar app for macOS users.
 
 ### Settings
 Each monitor's menu bar icon can be shown/hidden independently, with per-monitor customization available from the Settings window (⌘,):
-- **General**: Launch at login, show/hide each monitor's menu bar icon
+- **General**: Launch at login, update interval, show/hide each monitor's menu bar icon
 - **Network**: Show/hide upload or download speed, speed unit (Auto/B/KB/MB per second), number of processes shown in the dropdown
 - **CPU**: CPU/memory warning thresholds, which dropdown sections are shown (temperature, GPU, memory, load average, uptime), number of CPU/memory processes shown
 - **Disk**: Disk usage warning threshold, show/hide network disks and process activity in the dropdown, number of processes shown
@@ -51,6 +51,7 @@ If every monitor is hidden, a small rescue icon appears in the menu bar so Setti
 - **Network Reachability**: NWPathMonitor detects connectivity changes to avoid unnecessary requests when offline
 - **Health Monitoring**: Auto-recovery when monitors become stale (restarts after 30s of no updates)
 - **Rate Limiting**: Prevents excessive updates under high system load (min 0.5s between updates)
+- **Adaptive Detail Polling**: Expensive process and GPU sampling runs only while its monitor's dropdown is open; lightweight menu bar stats continue at the selected update interval
 - **Data Validation**: Clamps percentages (0-100%), speeds (max 10 Gbps), and handles counter wraparound
 - **Graceful Timer Cleanup**: Proper deinit handling prevents race conditions on app termination
 
